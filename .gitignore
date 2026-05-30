@@ -1,0 +1,24 @@
+# Git Workflow Umbrella Skill
+# https://github.com/spz-ecosystem/git-workflow
+
+# Backup artifacts
+*.backup
+
+# Package artifacts
+*.tar.gz
+*.zip
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/

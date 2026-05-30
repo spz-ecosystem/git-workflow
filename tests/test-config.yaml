@@ -1,0 +1,96 @@
+# Git Workflow Umbrella Skill 测试配置
+# 用于测试环境的配置
+
+# 推送管理配置
+push:
+  precheck: true
+  timeout: 60
+  retry_count: 1
+  pr_fallback: false
+
+# 分支管理配置
+branch:
+  protection:
+    - main
+    - master
+  auto_cleanup: false
+  naming:
+    feature: "test-feature/"
+    bugfix: "test-bugfix/"
+    hotfix: "test-hotfix/"
+    release: "test-release/"
+  # 分支清理配置
+  cleanup:
+    # 是否启用交互式清理
+    interactive: false
+    # 是否启用dry-run模式
+    dry_run: true
+    # 过期分支天数（默认30天）
+    expire_days: 1
+    # 是否清理远程分支
+    clean_remote: false
+    # 是否清理已合并分支
+    clean_merged: false
+    # 排除列表（不清理的分支）
+    exclude:
+      - main
+      - master
+
+# Worktree管理配置
+worktree:
+  isolation: true
+  base_path: "/tmp/test-worktrees"
+  auto_cleanup: false
+  main_protection: true
+
+# 发版预检配置
+release:
+  precheck: false
+  required_tests: false
+  required_docs: false
+  required_build: false
+
+# 安全审查配置
+security:
+  audit: false
+  log_operations: false
+  monitor_anomalies: false
+  sensitive_operations_confirm: false
+
+# 清理工具配置
+cleanup:
+  auto_cleanup: false
+  cleanup_interval: 1
+  temp_branch_retention: 1
+  worktree_retention: 1
+
+# 日志配置
+logging:
+  log_dir: "/tmp/test-logs/git-workflow"
+  log_level: "DEBUG"
+  verbose: true
+  retention_days: 1
+
+# 备份配置
+backup:
+  backup_dir: "/tmp/test-backups/git-workflow"
+  auto_backup: false
+  retention_days: 1
+
+# 通知配置
+notification:
+  enabled: false
+  methods:
+    - console
+  levels:
+    - error
+
+# 跨平台配置
+cross_platform:
+  auto_detect_windows: false
+  windows_path_mapping:
+    codebuddy_dir: "/tmp/test-codebuddy"
+    username: "test"
+  symlink:
+    auto_create: false
+    backup_existing: false

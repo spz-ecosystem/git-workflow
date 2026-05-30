@@ -1,0 +1,139 @@
+# Git Workflow Umbrella Skill 配置
+# ── 通过 GIT_WORKFLOW_CONFIG 环境变量指定路径，或放在脚本同目录
+# ── Copyright (c) 2026 Pu Junhan
+
+# 推送管理配置
+push:
+  # 是否启用预检
+  precheck: true
+  # 推送超时时间（秒）
+  timeout: 300
+  # 重试次数
+  retry_count: 3
+  # 推送失败时是否使用PR回退
+  pr_fallback: true
+
+# 分支管理配置
+branch:
+  # 保护分支列表
+  protection:
+    - main
+    - master
+    - develop
+    - release
+    - production
+  # 是否自动清理已合并分支
+  auto_cleanup: true
+  # 分支命名规范
+  naming:
+    feature: "feature/"
+    bugfix: "bugfix/"
+    hotfix: "hotfix/"
+    release: "release/"
+  # 分支清理选项
+  cleanup:
+    # 是否交互式清理
+    interactive: true
+    # 不实际删除分支
+    dry_run: false
+    # 过期天数
+    expire_days: 30
+    # 是否清理远程跟踪引用
+    clean_remote: true
+    # 是否清理已合并分支
+    clean_merged: true
+    # 排除的分支
+    exclude:
+      - main
+      - master
+      - develop
+      - release
+      - production
+      - gh-pages
+
+# Worktree 管理配置
+worktree:
+  # 是否强制隔离
+  isolation: true
+  # Worktree 基础路径
+  base_path: "~/.local/share/git-workflow/worktrees"
+  # 是否自动清理
+  auto_cleanup: true
+  # 是否保护主worktree
+  main_protection: true
+
+# 发版预检配置
+release:
+  # 是否启用预检
+  precheck: true
+  # 是否要求测试通过
+  required_tests: true
+  # 是否要求文档完整
+  required_docs: true
+  # 是否要求构建成功
+  required_build: true
+
+# 安全审查配置
+security:
+  # 是否启用审计
+  audit: true
+  # 是否记录操作
+  log_operations: true
+  # 是否监控异常
+  monitor_anomalies: true
+  # 敏感操作是否需要确认
+  sensitive_operations_confirm: true
+
+# 清理工具配置
+cleanup:
+  # 是否自动清理
+  auto_cleanup: true
+  # 清理间隔（天）
+  cleanup_interval: 7
+  # 临时分支保留天数
+  temp_branch_retention: 30
+  # Worktree保留天数
+  worktree_retention: 30
+
+# 历史管理配置 (v2.0 新增)
+history:
+  # 撤销前是否自动备份
+  auto_backup: true
+  # 撤销操作是否需要确认
+  backup_on_undo: true
+
+# 日志配置
+logging:
+  # 日志目录
+  log_dir: "~/.local/share/git-workflow/logs"
+  # 日志级别: DEBUG, INFO, WARN, ERROR
+  log_level: "INFO"
+  # 是否详细输出
+  verbose: false
+  # 日志保留天数
+  retention_days: 30
+
+# 备份配置
+backup:
+  # 备份目录
+  backup_dir: "~/.local/share/git-workflow/backups"
+  # 是否自动备份
+  auto_backup: true
+  # 备份保留天数
+  retention_days: 30
+
+# 通知配置
+notification:
+  enabled: true
+  # 通知方式
+  methods:
+    - console
+    - log
+  # 通知级别
+  levels:
+    - error
+    - warning
+    - success
+
+# 版本号
+version: "2.0.0"

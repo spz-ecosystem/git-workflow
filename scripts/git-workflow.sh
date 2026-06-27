@@ -98,6 +98,18 @@ push_management() {
             [ -z "$branch" ] && branch=$(git branch --show-current 2>/dev/null || echo "main")
             [ -z "$push_url" ] && push_url=$(git remote get-url "$remote" 2>/dev/null)
 
+            # ─── F8.1: Gatekeeper context delegation ───
+            # 如果 spz-gatekeeper-r-sequence CLI 可访问, 委托给 cmd_push (含 _verify_remote + stage 门禁)
+            local gk_cli="$(cd "$SKILL_DIR/../spz-gatekeeper-r-sequence" 2>/dev/null && pwd)/gatekeeper-cli.sh"
+            if [ -f "$gk_cli" ]; then
+                log_info "检测到 spz-gatekeeper-r-sequence → 委托推送 (含远端白名单验证)"
+                local repo="$(pwd)"
+                bash "$gk_cli" push confirm --repo "$repo" --remote "$remote" --branch "$branch" --push-url "$push_url" 2>&1
+                local gk_exit=$?
+                [ $gk_exit -eq 0 ] && log_success "gatekeeper 委托推送成功" || log_warn "gatekeeper 委托失败 (exit=$gk_exit), 降级到原生 push"
+                [ $gk_exit -eq 0 ] && return 0
+            fi
+
             # Try github-push submodule first (has retry + rate-limit handling)
             local github_push="$SKILL_DIR/../github-push/github_push.py"
             if [ -f "$github_push" ]; then
@@ -143,7 +155,24 @@ push_management() {
             # 创建feature分支并推送
             local branch=$(git branch --show-current)
             local feature_branch="feature/$(date +%Y%m%d-%H%M%S)"
-            
+
+            # F8.1: pr-fallback 远端白名单验证 (独立实现, 不依赖 gatekeeper CLI)
+            local _pr_url; _pr_url=$(git remote get-url origin 2>/dev/null || echo "")
+            local _pr_allowed=false
+            for _pr_pat in "github.com/spz-ecosystem/" "atomgit.com/pjh3955/"; do
+                if echo "$_pr_url" | grep -qi "$_pr_pat"; then
+                    _pr_allowed=true
+                    break
+                fi
+            done
+            if [ "$_pr_allowed" != "true" ]; then
+                log_error "远端白名单验证失败: origin ($_pr_url) 不在允许列表中"
+                log_info "允许列表: github.com/spz-ecosystem/*, atomgit.com/pjh3955/*"
+                log_info "请检查 git remote -v 确认远端配置"
+                return 1
+            fi
+            log_success "远端白名单验证通过"
+
             git checkout -b "$feature_branch"
             git push origin "$feature_branch"
             gh pr create --base main --head "$feature_branch" --fill

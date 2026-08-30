@@ -5,6 +5,25 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.1.0] - 2026-08-30
+
+### 新增
+- 🛡️ **技能加载安全网**（加载安全网模版第三次应用，对齐 spz-gatekeeper-r-sequence 的
+  bashpy/paper-review 同款协议）：`scripts/gk_gitworkflow_loader.py` 对核心脚本
+  （git-workflow.sh + branch-delete-safety-check.sh）做 **SHA256 pin 五源分流**
+  （builtin/dev/tampered/missing/error）；入口 `gw_load_guard` 前置校验，
+  **tampered/missing/error → fail-closed exit 2**（被篡改/损坏/缺失的技能永不执行）
+- ✨ **`selfcheck` 子命令**：加载安全网状态自检（builtin → PASS / dev → WARN /
+  tampered|missing|error → FAIL exit 2）
+- ✨ **`version` 子命令**：输出当前版本
+- 🔗 **manifest 登记**：spz-gatekeeper-r-sequence `gk_plugin_manifest` 登记
+  `git-workflow`（intercept = 七模块能力白名单 + selfcheck/version），双向委托纳入治理闭环
+
+### 变更
+- 🔧 **防循环委托哨兵**：push 委托 spz-gatekeeper `cmd_push`（F8.1 远端白名单门禁）时置
+  `GIT_WORKFLOW_DELEGATING=1`，cmd_push 检测到该 env 跳过"使用 git-workflow"提醒——
+  消除 `cmd_push→提醒→git-workflow→委托→提醒` 环路风险
+
 ## [2.0.0] - 2026-05-10
 
 ### 新增

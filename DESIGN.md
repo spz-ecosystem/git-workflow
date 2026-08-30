@@ -352,3 +352,44 @@ git-workflow umbrella skill将提供：
 5. **跨平台支持**：自动处理Windows/WSL路径问题
 
 通过这个umbrella skill，我们可以彻底规范化git工作流，提高开发效率，降低错误率，确保代码质量。
+
+## 10. 与 spz-gatekeeper-r-sequence 的链接委托关系（2026-08-30 整理）
+
+### 10.1 委托链全景（双向）
+
+```
+spz-gatekeeper-r-sequence ──(SKILL.md Push/PR 强制 INVOKE)──▶ git-workflow
+        ▲                                                        │
+        │                                                        │ push 委托 cmd_push
+        │ (cmd_push 远端白名单门禁 F8.1)                          ▼
+        └──────────────◀── git-workflow（GIT_WORKFLOW_DELEGATING=1 防循环哨兵）
+                                                        │
+                                                        ▼ github-push 子模块（重试+限速）
+```
+
+| 方向 | 委托点 | 机制 | 安全网 |
+|---|---|---|---|
+| spz-gatekeeper → git-workflow | SKILL.md 表格（L25/L127/L128）：R 序列 Push/PR **强制 INVOKE git-workflow** | token 轮换 + PR 创建走 git-workflow | gatekeeper-cli.sh cmd_push git-workflow 提醒钩子（L4311） |
+| gatekeeper-cli.sh → git-workflow | stage 门禁证据 `ev_git_workflow`（commit log 含 git-workflow 标记） | 流水线证据 | `_git log \| rg -qi 'git-workflow'` |
+| git-workflow → spz-gatekeeper | push 模块检测 `../spz-gatekeeper-r-sequence/gatekeeper-cli.sh` → 委托 `cmd_push`（F8.1 `_verify_remote` + stage 门禁） | 远端白名单验证 | 委托失败降级原生 push；`GIT_WORKFLOW_DELEGATING=1` 防循环 |
+| git-workflow → github-push | precheck/push 委托 `../github-push/github_push.py` | 重试 + rate-limit 处理 | 子模块缺失 → WARN 降级 |
+
+### 10.2 委托环路风险与防循环哨兵（2026-08-30 实装）
+
+**环路路径**：`cmd_push → 提醒"使用 git-workflow" → 用户 INVOKE git-workflow → push 委托 cmd_push → 再提醒…`
+
+- 原实现：cmd_push 提醒仅 WARNING（不阻断），git-workflow 委托成功后 `return 0` —— 无死循环但存在**逻辑环路隐患**（每轮委托重复提示）。
+- **修复**：git-workflow.sh push 委托 cmd_push 时前置环境变量 `GIT_WORKFLOW_DELEGATING=1`；gatekeeper-cli.sh cmd_push 检测到该 env **跳过 git-workflow 提醒钩子**（L4316 `if [ "${GIT_WORKFLOW_DELEGATING:-0}" != "1" ]`）。委托链内只执行一次提醒。
+
+### 10.3 加载安全网（2026-08-30 实装，模版第三次应用）
+
+- **技能侧**：`scripts/gk_gitworkflow_loader.py` — SHA256 pin 五源分流
+  （builtin/dev/tampered/missing/error），入口 `gw_load_guard` 前置校验，
+  tampered/missing/error → **fail-closed exit 2**；`selfcheck` 子命令自检。
+- **治理侧**：spz-gatekeeper `gk_plugin_manifest.MANIFESTS["git-workflow"]` 登记
+  （intercept = 七模块能力白名单 + selfcheck/version；config.loader/version/delegate 元数据），
+  `validate_manifest('git-workflow')` / `check_capability('git-workflow','push')` 全通。
+- **语义**：builtin = 全部核心脚本哈希命中 + manifest 登记（放行）；dev = 存在未 pin 或
+  manifest 未登记（WARN 放行）；tampered = 任一脚本哈希不匹配（拦截）；missing = 脚本缺失
+  （拦截）；error = 不可读（拦截）。loader 缺失（无 python3）→ 放行（bash 技能本体不因
+  增强层缺失而不可用）。

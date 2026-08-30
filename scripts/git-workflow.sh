@@ -1,7 +1,9 @@
 #!/bin/bash
-# Git Workflow Umbrella Skill - 主脚本 (v2.0.0)
+# Git Workflow Umbrella Skill - 主脚本 (v2.1.0)
 # Copyright (c) 2026 Pu Junhan. MulanPSL-2.0
 # 统一管理所有git工作流操作 (7 模块: push/branch/worktree/release/security/cleanup/history)
+# 2026-08-30 v2.1.0: 加载安全网（gk_gitworkflow_loader.py SHA256 pin 五源分流，tampered→fail-closed）
+#                     + selfcheck 子命令 + 委托 spz-gatekeeper 防循环哨兵（GIT_WORKFLOW_DELEGATING）
 
 set -e
 
@@ -36,6 +38,12 @@ CONFIG_FILE="${GIT_WORKFLOW_CONFIG:-$SKILL_DIR/git-workflow.yaml}"
 LOG_DIR="${GIT_WORKFLOW_LOG:-$HOME/.local/share/git-workflow/logs}"
 BACKUP_DIR="${GIT_WORKFLOW_BACKUP:-$HOME/.local/share/git-workflow/backups}"
 
+# 加载安全网（2026-08-30，模版第三次应用：bashpy/paper-review → git-workflow 技能类）
+# gk_gitworkflow_loader.py 对核心脚本（git-workflow.sh + branch-delete-safety-check.sh）做
+# SHA256 pin 五源分流：builtin=放行 / dev=WARN 放行 / tampered|missing|error=fail-closed exit 2。
+GW_LOADER="$SKILL_DIR/scripts/gk_gitworkflow_loader.py"
+GW_LOAD_SOURCE=""
+
 # 创建必要目录
 mkdir -p "$LOG_DIR" "$BACKUP_DIR"
 
@@ -63,6 +71,56 @@ log_operation() {
     local log_file="$LOG_DIR/operations.log"
     
     echo "[$timestamp] $operation: $details" >> "$log_file"
+}
+
+# ─── 加载安全网守卫（2026-08-30）───
+# 前置 gk_gitworkflow_loader.py 校验核心脚本完整性。tampered/missing/error → fail-closed exit 2。
+# loader 缺失（python3 不可用/未安装）→ 放行：git-workflow 本体是 bash，不因增强层缺失而不可用。
+_gw_loader_detail() {
+    python3 "$GW_LOADER" status 2>/dev/null | python3 -c 'import sys,json
+try:
+    print(json.load(sys.stdin).get("detail",""))
+except Exception:
+    print("")'
+}
+
+gw_load_guard() {
+    [ -f "$GW_LOADER" ] || return 0
+    GW_LOAD_SOURCE=$(python3 "$GW_LOADER" status 2>/dev/null | python3 -c 'import sys,json
+try:
+    print(json.load(sys.stdin).get("source","error"))
+except Exception:
+    print("error")' 2>/dev/null)
+    case "$GW_LOAD_SOURCE" in
+        builtin)
+            return 0 ;;
+        dev)
+            log_warn "git-workflow 未 pin（dev 态）: $(_gw_loader_detail)"
+            return 0 ;;
+        tampered|missing|error)
+            log_error "git-workflow 加载被拦截（$GW_LOAD_SOURCE）：核心脚本被篡改/损坏/缺失"
+            log_error "  详情: $(_gw_loader_detail)"
+            log_error "  运行: python3 \"$GW_LOADER\" status"
+            exit 2 ;;
+        *)
+            return 0 ;;  # loader 输出异常 → 放行（不阻断技能本体）
+    esac
+}
+
+# selfcheck：加载安全网状态自检（builtin → PASS / dev → WARN / tampered|missing|error → FAIL exit 2）
+gw_selfcheck() {
+    if [ ! -f "$GW_LOADER" ]; then
+        log_warn "加载安全网未安装（gk_gitworkflow_loader.py 缺失）— 技能未纳入 pin 治理"
+        exit 2
+    fi
+    python3 "$GW_LOADER" check
+    local rc=$?
+    if [ $rc -eq 0 ]; then
+        log_success "git-workflow 加载安全网 OK（version=$(python3 "$GW_LOADER" version 2>/dev/null)）"
+    else
+        log_error "git-workflow 加载安全网 FAILED（exit=$rc）— 核心脚本被篡改/损坏/缺失"
+    fi
+    return $rc
 }
 
 # 推送管理模块
@@ -100,11 +158,13 @@ push_management() {
 
             # ─── F8.1: Gatekeeper context delegation ───
             # 如果 spz-gatekeeper-r-sequence CLI 可访问, 委托给 cmd_push (含 _verify_remote + stage 门禁)
+            # 2026-08-30 防循环哨兵：委托时置 GIT_WORKFLOW_DELEGATING=1，spz-gatekeeper cmd_push
+            # 检测到该 env 不再提示"使用 git-workflow"（防 cmd_push→提醒→git-workflow→委托→提醒 环路）。
             local gk_cli="$(cd "$SKILL_DIR/../spz-gatekeeper-r-sequence" 2>/dev/null && pwd)/gatekeeper-cli.sh"
             if [ -f "$gk_cli" ]; then
                 log_info "检测到 spz-gatekeeper-r-sequence → 委托推送 (含远端白名单验证)"
                 local repo="$(pwd)"
-                bash "$gk_cli" push confirm --repo "$repo" --remote "$remote" --branch "$branch" --push-url "$push_url" 2>&1
+                GIT_WORKFLOW_DELEGATING=1 bash "$gk_cli" push confirm --repo "$repo" --remote "$remote" --branch "$branch" --push-url "$push_url" 2>&1
                 local gk_exit=$?
                 [ $gk_exit -eq 0 ] && log_success "gatekeeper 委托推送成功" || log_warn "gatekeeper 委托失败 (exit=$gk_exit), 降级到原生 push"
                 [ $gk_exit -eq 0 ] && return 0
@@ -1169,21 +1229,36 @@ show_help() {
 
 # 主函数
 main() {
-    # 检查git仓库
-    check_git_repo
-    
-    # 检查配置文件
-    check_config
-    
+    # 加载安全网最先（2026-08-30）：tampered/missing/error → fail-closed exit 2，不执行任何模块
+    gw_load_guard
+
     # 解析参数
     if [ $# -eq 0 ]; then
         show_help
         exit 0
     fi
-    
+
     local module=$1
     shift
-    
+
+    # 自检/版本不需 git 仓库（在 check_git_repo 前处理）
+    case $module in
+        "selfcheck")
+            gw_selfcheck
+            return $?
+            ;;
+        "version")
+            echo "git-workflow v2.1.0"
+            return 0
+            ;;
+    esac
+
+    # 检查git仓库
+    check_git_repo
+
+    # 检查配置文件
+    check_config
+
     case $module in
         "push")
             push_management "$@"
@@ -1215,7 +1290,7 @@ main() {
             exit 1
             ;;
     esac
-    
+
     # 记录操作日志
     log_operation "$module" "$*"
 }

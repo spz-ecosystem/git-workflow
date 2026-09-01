@@ -114,6 +114,12 @@ git-workflow cleanup branches
    - 检查语法错误
    - 验证hook配置
 
+1b. **换行符污染检测（2026-09-01 L1 扩展）**
+   - 同文件混合 CRLF+LF → 换行符污染（diff 噪声/补丁注入风险面）
+   - .gitattributes 缺失 + core.autocrlf 未开启 → 无显式换行策略（漂移/重写风险）
+   - 建议：补 `.gitattributes`（`* text=auto` + 关键类型 `eol=lf`）统一行尾
+   - 确定性检测：`gatekeeper-cli.sh audit --crossr` → `git_workflow.line_ending_pollution`
+
 2. **Token类型与权限验证**
    - 检测token类型（classic vs fine-grained）
    - 验证仓库权限

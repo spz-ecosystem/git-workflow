@@ -31,9 +31,13 @@ SCRIPTS_DIR = SKILL_DIR / "scripts"
 GITWORKFLOW_VERSION = "2.1.0.post1"
 # 核心脚本 pin 表（version → {filename: sha256}）。登记 = 跑过测试/验收的当前产物。
 # 修改任一核心脚本后须更新本 pin（对齐 _RELEASE_PINS 纪律：未登记 = dev WARN）。
+# 2026-09-23（ECC-A91DC4562198 收编）：`git-workflow.sh` 新增 `worktree create --from/--json`
+#   + `_gw_worktree_base()`（根改为读配置 worktree.base_path）⟹ 同步更新其 pin。
+#   实测：未更新前 `git-workflow.sh` 任何子命令被 `gw_load_guard` 判 tampered exit 2
+#   （「改核心脚本 ⟹ 必须同步 pin」的耦合是**真实且即时的**，非文档约定）。
 _GITWORKFLOW_PINS = {
     "2.1.0.post1": {
-        "git-workflow.sh": "ebb2b7b12cfe4ac7b6b202b76ee57d7b86362afd5deaa1d1e07d921c0bdb4fa2",
+        "git-workflow.sh": "3700dee3bd7128add021715100558db4665310d7be52bcde7222b47e36bdac30",
         "branch-delete-safety-check.sh": "5f9076defd07011046662ec55fea5f762bfe5cae6eab3c6aac72fa9d18efecd3",
     },
 }

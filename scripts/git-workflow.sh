@@ -63,6 +63,30 @@ check_config() {
     fi
 }
 
+# worktree 根解析（2026-09-23，ECC-A91DC4562198 收编）：**单一事实源 = 配置文件**
+# `worktree.base_path`；`GIT_WORKFLOW_WORKTREE_ROOT` 可显式覆盖（测试/门禁注入用）。
+# 背景：原实现把根**硬编码**为 `$HOME/.config/superpowers/worktrees`，与 yaml 的
+# `base_path`、SKILL.md 记的 `/root/.config/superpowers/worktrees` **三处互不相同**。
+_gw_worktree_base() {
+    if [ -n "${GIT_WORKFLOW_WORKTREE_ROOT:-}" ]; then
+        printf '%s' "$GIT_WORKFLOW_WORKTREE_ROOT"
+        return 0
+    fi
+    local _b=""
+    if [ -f "$CONFIG_FILE" ]; then
+        _b=$(python3 -c "
+import sys
+for ln in open(sys.argv[1], encoding='utf-8'):
+    s = ln.strip()
+    if s.startswith('base_path:'):
+        print(s.split(':', 1)[1].strip().strip(chr(34) + chr(39)))
+        break
+" "$CONFIG_FILE" 2>/dev/null)
+    fi
+    [ -z "$_b" ] && _b="$HOME/.config/superpowers/worktrees"   # 配置缺失 → 保持旧行为兜底
+    printf '%s' "$_b"
+}
+
 # 记录操作日志
 log_operation() {
     local operation=$1
@@ -815,20 +839,72 @@ worktree_management() {
     
     case $action in
         "create")
-            local branch_name=$1
-            log_info "创建隔离worktree: $branch_name"
-            
-            # 检查分支是否已存在
-            if ! git show-ref --verify --quiet "refs/heads/$branch_name"; then
-                log_error "分支不存在: $branch_name"
+            # 2026-09-23（ECC-A91DC4562198 收编）：机读模式 + 建分支 + 根单一化。
+            # 原实现三缺：① 要求分支**已存在**（无 `-b`）⟹ 门禁的 `agent/<family>/<short>`
+            #   分支尚不存在时必失败；② 只回**人类日志** ⟹ 调用方无法机读 worktree 路径；
+            #   ③ 根**硬编码** `$HOME/.config/superpowers/worktrees`（与 yaml/SKILL.md 三处不一致）。
+            # 现：`--from <ref>` 允许新建分支、`--json` 回单行 JSON、根取 `_gw_worktree_base()`。
+            local branch_name="" from_ref="" json_out=0
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --from) from_ref="${2:-}"; shift 2 ;;
+                    --json) json_out=1; shift ;;
+                    *) [ -z "$branch_name" ] && branch_name="$1"; shift ;;
+                esac
+            done
+            if [ -z "$branch_name" ]; then
+                log_error "usage: git-workflow worktree create <branch> [--from <ref>] [--json]"
+                exit 2
+            fi
+            # fail-loud：拒非法分支 token（路径逃逸面；与门禁 `_FAMILY_RE` 同口径的保守子集）
+            case "$branch_name" in
+                *..*|/*|/*/*|-) log_error "非法分支名: $branch_name"; exit 2 ;;
+            esac
+
+            local _base _repo _worktree_path _created=0
+            _base=$(_gw_worktree_base)
+            _repo=$(basename "$(git rev-parse --show-toplevel)")
+            _worktree_path="$_base/$_repo/$branch_name"
+            mkdir -p "$(dirname "$_worktree_path")" 2>/dev/null || true
+
+            # 幂等（2026-09-23 实测补修）：目标路径**已是该分支的 worktree** ⟹ 复用。
+            # 原缺此分支：第二次调用会走到 `git worktree add` ⟹
+            # `fatal: '<path>' already exists` ⟹ rc=1（把「复用」误报成失败）。
+            if [ -d "$_worktree_path" ]; then
+                local _cur
+                _cur=$(git -C "$_worktree_path" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+                if [ "$_cur" = "$branch_name" ]; then
+                    if [ "$json_out" = "1" ]; then
+                        printf '{"ok":true,"worktree":"%s","branch":"%s","created":false,"reused":true}\n' \
+                            "$_worktree_path" "$branch_name"
+                    else
+                        log_success "Worktree已存在（复用）: $_worktree_path"
+                    fi
+                    return 0
+                fi
+                log_error "目标目录已存在但不是该分支（拒绝覆盖）: $_worktree_path"
                 exit 1
             fi
-            
-            # 创建worktree
-            local worktree_path="$HOME/.config/superpowers/worktrees/$(basename $(git rev-parse --show-toplevel))/$branch_name"
-            git worktree add "$worktree_path" "$branch_name"
-            
-            log_success "Worktree创建成功: $worktree_path"
+
+            if git show-ref --verify --quiet "refs/heads/$branch_name"; then
+                git worktree add "$_worktree_path" "$branch_name" || {
+                    log_error "git worktree add 失败: $branch_name"; exit 1; }
+            elif [ -n "$from_ref" ]; then
+                git worktree add -b "$branch_name" "$_worktree_path" "$from_ref" || {
+                    log_error "git worktree add -b 失败: $branch_name (from $from_ref)"; exit 1; }
+                _created=1
+            else
+                log_error "分支不存在且未提供 --from <ref>: $branch_name"
+                exit 1
+            fi
+
+            if [ "$json_out" = "1" ]; then
+                if [ "$_created" = "1" ]; then _cb=true; else _cb=false; fi
+                printf '{"ok":true,"worktree":"%s","branch":"%s","created":%s,"reused":%s}\n' \
+                    "$_worktree_path" "$branch_name" "$_cb" "$([ "$_created" = "1" ] && echo false || echo true)"
+            else
+                log_success "Worktree创建成功: $_worktree_path"
+            fi
             ;;
         "delete")
             local branch_name=$1

@@ -571,3 +571,14 @@ ln -s /mnt/c/Users/HP/.codebuddy/skills/git-workflow /root/.codebuddy/skills/git
 - 添加清理工具模块
 
 - **2026-05-04**：初始版本，创建git-workflow umbrella skill
+
+## 凭据与密钥库（v2.1.0.post2，2026-10-25）
+
+- **唯一密钥库**：`C:\Users\HP\.config\trae-secrets\github.token`（WSL `/mnt/c/Users/HP/.config/trae-secrets/github.token`）。只存 PAT 本身，不入库、不进日志、不写进 md。
+- **解析入口**：`scripts/gw_credentials.sh`
+  - `source scripts/gw_credentials.sh; t=$(gw_token)`
+  - 顺序：密钥库 → `GITHUB_TOKEN` → `GH_TOKEN` → `gh auth token`
+  - `gw_export_env` 同时导出 `GH_TOKEN` / `GITHUB_TOKEN`
+- **推送取 token**：`git-workflow.sh` 已用 `$(gw_token)` 取代 `gh auth token`。`gh auth login` 因该 PAT 缺 `read:org` 会失败，列私有仓改用 `GH_TOKEN=$(gw_token) gh repo list ...`。
+- **定位私有仓/密钥**：先读 `C:\Users\HP\.trae\project_memory.md` 的「🔑 全局凭据与密钥库」，禁止全盘搜索 token / 私钥。
+- **版本纪律**：改 `git-workflow.sh` 后必须同步 `gk_gitworkflow_loader.py` 的 pin，否则任何子命令被加载安全网判 tampered 并 fail-closed（exit 2）。

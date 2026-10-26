@@ -35,9 +35,18 @@ GITWORKFLOW_VERSION = "2.1.0.post1"
 #   + `_gw_worktree_base()`（根改为读配置 worktree.base_path）⟹ 同步更新其 pin。
 #   实测：未更新前 `git-workflow.sh` 任何子命令被 `gw_load_guard` 判 tampered exit 2
 #   （「改核心脚本 ⟹ 必须同步 pin」的耦合是**真实且即时的**，非文档约定）。
+# 2026-09-24（用户裁定「按建议做」取 A：worktree 生命周期单源化）：`worktree delete` 新增
+#   `--path <dir>`（按路径，应对**无 branch 的孤儿**）+ `--force`（脏 wt 强删 —— 门禁回收链
+#   **先归档、归档不改 wt** ⟹ 落刀时 wt 仍 dirty，原实现必被 git 拒删）⟹ 同步更新其 pin。
+#   实测：未更新前 `pytest tests/test_gk_gitworkflow_loader.py` **4 failed**
+#   （`test_builtin_ok` / `test_dev_no_manifest` / `test_load_builtin_returns_entry` /
+#   `test_cli_check_builtin_exit0`）⟹ 红先是**真的**，不是文档约定。
+# 2026-10-25（凭据单一入口）：git-workflow.sh 改为 source scripts/gw_credentials.sh，
+#   推送取 token 由 `gh auth token` 改为 `gw_token`（密钥库 → 环境变量 → gh）⟹ 同步更新其 pin。
+#   实测：未更新前任何子命令被 gw_load_guard 判 tampered exit 2（同 09-23/09-24 的即时耦合）。
 _GITWORKFLOW_PINS = {
     "2.1.0.post1": {
-        "git-workflow.sh": "3700dee3bd7128add021715100558db4665310d7be52bcde7222b47e36bdac30",
+        "git-workflow.sh": "130f78363716c9f0890af2f9d6ed6868706ab091d0e03b2c4f5a2ec1562b6e08",
         "branch-delete-safety-check.sh": "5f9076defd07011046662ec55fea5f762bfe5cae6eab3c6aac72fa9d18efecd3",
     },
 }

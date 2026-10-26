@@ -38,6 +38,11 @@ CONFIG_FILE="${GIT_WORKFLOW_CONFIG:-$SKILL_DIR/git-workflow.yaml}"
 LOG_DIR="${GIT_WORKFLOW_LOG:-$HOME/.local/share/git-workflow/logs}"
 BACKUP_DIR="${GIT_WORKFLOW_BACKUP:-$HOME/.local/share/git-workflow/backups}"
 
+# 凭据单一入口（2026-10-25）：密钥库 > 环境变量 > gh auth。
+# 密钥库默认 ~/.config/trae-secrets/github.token（Windows 侧回退同名路径）。
+# shellcheck source=/dev/null
+. "$SKILL_DIR/scripts/gw_credentials.sh"
+
 # 加载安全网（2026-08-30，模版第三次应用：bashpy/paper-review → git-workflow 技能类）
 # gk_gitworkflow_loader.py 对核心脚本（git-workflow.sh + branch-delete-safety-check.sh）做
 # SHA256 pin 五源分流：builtin=放行 / dev=WARN 放行 / tampered|missing|error=fail-closed exit 2。
@@ -198,7 +203,7 @@ push_management() {
             local github_push="$SKILL_DIR/../github-push/github_push.py"
             if [ -f "$github_push" ]; then
                 log_info "使用 github-push 模块 (含重试+限速处理)..."
-                if python "$github_push" git-push --token "$(gh auth token 2>/dev/null)" \
+                if python "$github_push" git-push --token "$(gw_token)" \
                     --owner "spz-ecosystem" --repo "spz_gatekeeper" \
                     --file "" --content "" --message "" --branch "$branch" 2>/dev/null; then
                     log_success "推送成功"
@@ -907,27 +912,56 @@ worktree_management() {
             fi
             ;;
         "delete")
-            local branch_name=$1
-            log_info "删除worktree: $branch_name"
-            
-            # 查找worktree路径
-            local worktree_info=$(git worktree list | grep "$branch_name")
-            if [ -z "$worktree_info" ]; then
-                log_error "未找到分支 '$branch_name' 的worktree"
+            # 2026-09-24（用户裁定「按建议做」= 二择一取 A：与 create 侧对称的单源）。
+            # 原实现两缺，逼得门禁侧只能**自造第二套** `git worktree remove`（双源）：
+            #   ① 只吃 **branch 名**（`worktree list | grep`）⟹ 对**失效注册 / 无 branch**
+            #      的孤儿目录无解（grep 不到 ⟹ 报「未找到」）；
+            #   ② **无 `--force`** ⟹ 有未提交内容的 worktree 必被 git 拒删（而门禁回收链
+            #      必须先归档、归档不改 wt ⟹ 落刀时 wt 仍是 dirty ⟹ 必然走不通）。
+            # 现：`--path <dir>` 直指路径（跳 grep）、`--force` 跳占用检查并强删。
+            local branch_name="" wt_path="" force=0
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --path) wt_path="${2:-}"; shift 2 ;;
+                    --force) force=1; shift ;;
+                    *) [ -z "$branch_name" ] && branch_name="$1"; shift ;;
+                esac
+            done
+            if [ -n "$wt_path" ]; then
+                log_info "删除worktree（按路径）: $wt_path"
+            else
+                if [ -z "$branch_name" ]; then
+                    log_error "usage: git-workflow worktree delete <branch> | worktree delete --path <dir> [--force]"
+                    exit 2
+                fi
+                log_info "删除worktree: $branch_name"
+                # 查找worktree路径
+                local worktree_info=$(git worktree list | grep "$branch_name")
+                if [ -z "$worktree_info" ]; then
+                    log_error "未找到分支 '$branch_name' 的worktree"
+                    exit 1
+                fi
+                wt_path=$(echo "$worktree_info" | awk '{print $1}')
+            fi
+            if [ ! -d "$wt_path" ]; then
+                log_error "路径不存在: $wt_path"
                 exit 1
             fi
-            
-            local worktree_path=$(echo "$worktree_info" | awk '{print $1}')
-            
-            # 检查worktree是否被占用
-            if fuser -v "$worktree_path" &> /dev/null; then
+
+            # 检查worktree是否被占用（`--force` 时跳过：调用方＝门禁回收链，语义已是「归档后
+            # 确认删除」；占用多为自己的 instrumented 子进程，误拦会让回收链永远清不掉）
+            if [ "$force" != "1" ] && fuser -v "$wt_path" &> /dev/null; then
                 log_error "Worktree被其他进程占用"
                 exit 1
             fi
-            
+
             # 删除worktree
-            git worktree remove "$worktree_path"
-            log_success "Worktree删除成功: $worktree_path"
+            if [ "$force" = "1" ]; then
+                git worktree remove --force "$wt_path"
+            else
+                git worktree remove "$wt_path"
+            fi
+            log_success "Worktree删除成功: $wt_path"
             ;;
         "cleanup")
             log_info "清理孤立worktree..."

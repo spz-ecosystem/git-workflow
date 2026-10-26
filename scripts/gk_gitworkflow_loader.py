@@ -46,7 +46,7 @@ GITWORKFLOW_VERSION = "2.1.0.post1"
 #   实测：未更新前任何子命令被 gw_load_guard 判 tampered exit 2（同 09-23/09-24 的即时耦合）。
 _GITWORKFLOW_PINS = {
     "2.1.0.post1": {
-        "git-workflow.sh": "130f78363716c9f0890af2f9d6ed6868706ab091d0e03b2c4f5a2ec1562b6e08",
+        "git-workflow.sh": "cce64f9d1c671dccb2215a42a4f77179314640041d7c13c7719a9e0dea43e3bf",
         "branch-delete-safety-check.sh": "5f9076defd07011046662ec55fea5f762bfe5cae6eab3c6aac72fa9d18efecd3",
     },
 }

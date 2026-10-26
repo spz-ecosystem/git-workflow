@@ -199,19 +199,13 @@ push_management() {
                 [ $gk_exit -eq 0 ] && return 0
             fi
 
-            # Try github-push submodule first (has retry + rate-limit handling)
-            local github_push="$SKILL_DIR/../github-push/github_push.py"
-            if [ -f "$github_push" ]; then
-                log_info "使用 github-push 模块 (含重试+限速处理)..."
-                if python "$github_push" git-push --token "$(gw_token)" \
-                    --owner "spz-ecosystem" --repo "spz_gatekeeper" \
-                    --file "" --content "" --message "" --branch "$branch" 2>/dev/null; then
-                    log_success "推送成功"
-                    return 0
-                fi
-                log_warn "github-push 模块失败，降级到原生 git push"
-            fi
-
+            # 2026-10-26 修复（缺陷：假成功/假推送）：
+            #   原实现在 gatekeeper 委托被拒后调用 `github_push.py git-push`，但
+            #   ① 该脚本**没有** `git-push` 子命令（只有 push/batch-push/sync）⟹ argparse 直接报错；
+            #   ② 参数硬编码 `--owner spz-ecosystem --repo spz_gatekeeper` 且 `--file ""`，
+            #      即便命令存在也只会对**另一个仓**推一个空路径文件；
+            #   ③ 其结果被当作「推送成功」返回 0，导致上层误判（实测 remote 完全未变）。
+            #   ⟹ 删除该回落分支，统一走原生 `git push`（凭据由 gatekeeper 委托或 credential helper 提供）。
             # Native git push with timeout + retry
             local attempt=1 max_attempts=3
             while [ $attempt -le $max_attempts ]; do

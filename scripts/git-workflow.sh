@@ -314,6 +314,16 @@ push_management() {
             
             log_success "PR创建成功"
             ;;
+        "--help"|"-h")
+            echo "用法: git-workflow push <操作> [选项]"
+            echo ""
+            echo "操作:"
+            echo "  precheck       推送前预检"
+            echo "  push           执行推送"
+            echo "  pr-fallback    分支保护时改走 PR"
+            return 0
+            ;;
+
         *)
             log_error "未知的推送操作: $action"
             exit 1
@@ -866,6 +876,19 @@ branch_management() {
                 log_success "定时任务已禁用"
             fi
             ;;
+        "--help"|"-h")
+            echo "用法: git-workflow branch <操作> [选项]"
+            echo ""
+            echo "操作:"
+            echo "  create <name>  创建新分支（自动建隔离 worktree）"
+            echo "  delete <name>  删除分支（安全审查后）"
+            echo "  cleanup        清理已合并/过期分支"
+            echo "  status         分支状态报告"
+            echo "  restore <name> 恢复已删除分支"
+            echo "  schedule       配置清理定时任务"
+            return 0
+            ;;
+
         *)
             log_error "未知的分支操作: $action"
             exit 1
@@ -1015,6 +1038,16 @@ worktree_management() {
             
             log_success "Worktree清理完成"
             ;;
+        "--help"|"-h")
+            echo "用法: git-workflow worktree <操作> [选项]"
+            echo ""
+            echo "操作:"
+            echo "  create <name>  创建隔离 worktree"
+            echo "  delete <name>  删除 worktree"
+            echo "  cleanup        清理孤立 worktree"
+            return 0
+            ;;
+
         *)
             log_error "未知的Worktree操作: $action"
             exit 1
@@ -1063,6 +1096,15 @@ release_management() {
             
             log_success "发版准备完成: $release_branch"
             ;;
+        "--help"|"-h")
+            echo "用法: git-workflow release <操作> [选项]"
+            echo ""
+            echo "操作:"
+            echo "  check          发版可行性检查"
+            echo "  prepare        发版准备"
+            return 0
+            ;;
+
         *)
             log_error "未知的发版操作: $action"
             exit 1
@@ -1113,6 +1155,15 @@ security_management() {
             
             log_success "安全审计完成: $audit_report"
             ;;
+        "--help"|"-h")
+            echo "用法: git-workflow security <操作> [选项]"
+            echo ""
+            echo "操作:"
+            echo "  review         安全审查"
+            echo "  audit          依赖/配置审计"
+            return 0
+            ;;
+
         *)
             log_error "未知的安全操作: $action"
             exit 1
@@ -1156,6 +1207,16 @@ cleanup_management() {
                 log_info "没有需要清理的临时分支"
             fi
             ;;
+        "--help"|"-h")
+            echo "用法: git-workflow cleanup <操作> [选项]"
+            echo ""
+            echo "操作:"
+            echo "  remote         清理远程跟踪引用"
+            echo "  worktree       清理 worktree"
+            echo "  branches       清理分支"
+            return 0
+            ;;
+
         *)
             log_error "未知的清理操作: $action"
             exit 1

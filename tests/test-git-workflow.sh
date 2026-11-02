@@ -4,6 +4,37 @@
 
 set -e
 
+# ── 测试目标推导（2026-11-02 修）─────────────────────────────────────────────
+# 原实现有 12 处硬编码 `$HOME/.codebuddy/skills/git-workflow/scripts/git-workflow.sh`。
+# 那个路径**至今仍存在**（5-31 的独立副本，非符号链）⟹ 本测试不会报"找不到"，
+# 而是**静默测了另一份文件**：16 tests / 12 passed / 4 failed 全是旧副本的读数，
+# 与当前仓代码零关系（典型假绿）。
+# 修法：从脚本自身位置推导；并加两条守卫（硬编码残留 / 旧副本提示）。
+TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SKILL_DIR="$(cd "$TESTS_DIR/.." && pwd)"
+SCRIPT_PATH="$SKILL_DIR/scripts/git-workflow.sh"
+
+if [ ! -f "$SCRIPT_PATH" ]; then
+    echo "[ERROR] 测试目标不存在: $SCRIPT_PATH" >&2
+    exit 1
+fi
+
+# 守卫①：禁止再写回硬编码（形如 script_path 指向 $HOME 下的某个 skills 目录）
+#   ⚠ 只匹配**代码行**（行首可选的 local 前缀），注释行（#）不算 —— 否则守卫会命中自己的说明文字。
+if grep -nE '^[[:space:]]*(local[[:space:]]+)?script_path="\$HOME/' "$0" 2>/dev/null | grep -q .; then
+    echo "[ERROR] 测试脚本仍存在硬编码 \$HOME 路径；请统一用 \$SCRIPT_PATH" >&2
+    exit 1
+fi
+
+# 守卫②：旧副本仍在时告警（不阻断；本测试不使用它）
+for _legacy in "$HOME/.codebuddy/skills/git-workflow/scripts/git-workflow.sh"; do
+    if [ -f "$_legacy" ]; then
+        echo "[WARN] 检测到旧副本仍在: $_legacy" >&2
+        echo "[WARN] 本测试**不使用**它；建议删除，以免别的脚本误指向" >&2
+    fi
+done
+unset _legacy
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -53,7 +84,7 @@ run_test() {
 
 # 测试帮助信息
 test_help() {
-    local script_path="$HOME/.codebuddy/skills/git-workflow/scripts/git-workflow.sh"
+    local script_path="$SCRIPT_PATH"
     
     if [ ! -f "$script_path" ]; then
         log_error "主脚本不存在: $script_path"
@@ -70,19 +101,19 @@ test_help() {
 
 # 测试配置文件
 test_config() {
-    local config_file="$HOME/.codebuddy/skills/git-workflow/git-workflow.yaml"
-    
+    local config_file="$SKILL_DIR/git-workflow.yaml"
+
+    # 配置是仓内文件，必须存在（原实现"不存在也 return 0"⟹ 恒绿）
     if [ -f "$config_file" ]; then
         return 0
-    else
-        log_warn "配置文件不存在，将使用默认配置"
-        return 0
     fi
+    log_error "配置文件缺失: $config_file"
+    return 1
 }
 
 # 测试脚本执行权限
 test_permissions() {
-    local script_path="$HOME/.codebuddy/skills/git-workflow/scripts/git-workflow.sh"
+    local script_path="$SCRIPT_PATH"
     
     if [ -x "$script_path" ]; then
         return 0
@@ -95,7 +126,7 @@ test_permissions() {
 
 # 测试安全审查功能
 test_security_review() {
-    local script_path="$HOME/.codebuddy/skills/git-workflow/scripts/git-workflow.sh"
+    local script_path="$SCRIPT_PATH"
     
     # 检查是否在git仓库中
     if ! git rev-parse --git-dir > /dev/null 2>&1; then
@@ -113,7 +144,7 @@ test_security_review() {
 
 # 测试清理功能
 test_cleanup() {
-    local script_path="$HOME/.codebuddy/skills/git-workflow/scripts/git-workflow.sh"
+    local script_path="$SCRIPT_PATH"
     
     # 检查是否在git仓库中
     if ! git rev-parse --git-dir > /dev/null 2>&1; then
@@ -129,7 +160,7 @@ test_cleanup() {
 
 # 测试分支管理功能
 test_branch_management() {
-    local script_path="$HOME/.codebuddy/skills/git-workflow/scripts/git-workflow.sh"
+    local script_path="$SCRIPT_PATH"
     
     # 检查是否在git仓库中
     if ! git rev-parse --git-dir > /dev/null 2>&1; then
@@ -147,7 +178,7 @@ test_branch_management() {
 
 # 测试分支状态报告
 test_branch_status() {
-    local script_path="$HOME/.codebuddy/skills/git-workflow/scripts/git-workflow.sh"
+    local script_path="$SCRIPT_PATH"
     
     # 检查是否在git仓库中
     if ! git rev-parse --git-dir > /dev/null 2>&1; then
@@ -165,7 +196,7 @@ test_branch_status() {
 
 # 测试分支清理dry-run
 test_branch_cleanup_dry_run() {
-    local script_path="$HOME/.codebuddy/skills/git-workflow/scripts/git-workflow.sh"
+    local script_path="$SCRIPT_PATH"
     
     # 检查是否在git仓库中
     if ! git rev-parse --git-dir > /dev/null 2>&1; then
@@ -183,7 +214,7 @@ test_branch_cleanup_dry_run() {
 
 # 测试分支恢复功能
 test_branch_restore() {
-    local script_path="$HOME/.codebuddy/skills/git-workflow/scripts/git-workflow.sh"
+    local script_path="$SCRIPT_PATH"
     
     # 检查是否在git仓库中
     if ! git rev-parse --git-dir > /dev/null 2>&1; then
@@ -207,7 +238,7 @@ test_branch_restore() {
 
 # 测试分支定时任务配置
 test_branch_schedule() {
-    local script_path="$HOME/.codebuddy/skills/git-workflow/scripts/git-workflow.sh"
+    local script_path="$SCRIPT_PATH"
     
     # 检查是否在git仓库中
     if ! git rev-parse --git-dir > /dev/null 2>&1; then
@@ -231,7 +262,7 @@ test_branch_schedule() {
 
 # 测试Worktree管理功能
 test_worktree_management() {
-    local script_path="$HOME/.codebuddy/skills/git-workflow/scripts/git-workflow.sh"
+    local script_path="$SCRIPT_PATH"
     
     # 检查是否在git仓库中
     if ! git rev-parse --git-dir > /dev/null 2>&1; then
@@ -249,7 +280,7 @@ test_worktree_management() {
 
 # 测试发版预检功能
 test_release_management() {
-    local script_path="$HOME/.codebuddy/skills/git-workflow/scripts/git-workflow.sh"
+    local script_path="$SCRIPT_PATH"
     
     # 检查是否在git仓库中
     if ! git rev-parse --git-dir > /dev/null 2>&1; then
@@ -267,7 +298,7 @@ test_release_management() {
 
 # 测试推送管理功能
 test_push_management() {
-    local script_path="$HOME/.codebuddy/skills/git-workflow/scripts/git-workflow.sh"
+    local script_path="$SCRIPT_PATH"
     
     # 检查是否在git仓库中
     if ! git rev-parse --git-dir > /dev/null 2>&1; then
@@ -285,51 +316,47 @@ test_push_management() {
 
 # 测试日志功能
 test_logging() {
-    local log_dir="$HOME/.codebuddy/logs/git-workflow"
-    
-    # 检查日志目录是否存在
-    if [ -d "$log_dir" ]; then
-        return 0
-    else
-        log_warn "日志目录不存在，将自动创建"
-        mkdir -p "$log_dir"
+    # 真断言：**能写**日志文件（原实现只检查目录、不存在就 mkdir 再 return 0 ⟹ 恒绿）
+    #   写入唯一文件名，不删（避安全删除钩子），文件 < 32 B。
+    local tmp_log="${TEMP:-/tmp}/gw-test-log-$$.log"
+    if echo "[test] $(date +%s)" > "$tmp_log" 2>/dev/null && [ -s "$tmp_log" ]; then
         return 0
     fi
+    log_error "无法写入日志文件: $tmp_log"
+    return 1
 }
 
 # 测试备份功能
 test_backup() {
-    local backup_dir="$HOME/.codebuddy/backups/git-workflow"
-    
-    # 检查备份目录是否存在
-    if [ -d "$backup_dir" ]; then
-        return 0
-    else
-        log_warn "备份目录不存在，将自动创建"
-        mkdir -p "$backup_dir"
+    # 真断言：`history backup` 能产出 repo.bundle（原实现只 mkdir 目录就 return 0 ⟹ 恒绿）
+    if ! git rev-parse --git-dir >/dev/null 2>&1; then
+        log_warn "不在 git 仓库中，跳过 backup 行为断言"
         return 0
     fi
+    local dest="${TEMP:-/tmp}/gw-test-bak-$$"
+    if bash "$SCRIPT_PATH" history backup "$dest" >/dev/null 2>&1 && [ -f "$dest/repo.bundle" ]; then
+        return 0
+    fi
+    log_error "backup 未产出 repo.bundle（dest=$dest）"
+    return 1
 }
 
 # 测试Windows/WSL路径检测
 test_windows_wsl_detection() {
-    # 检查是否在WSL环境中
+    # 跨平台能力断言。
+    #   原实现在 WSL 分支里检查一个写死的 `.codebuddy` 路径，且**两条分支都 return 0** ⟹ 恒绿。
+    #   真判据：`_gw_days_ago` 在本平台能算出日期（GNU date -d / BSD date -v / python 三级兜底任一成功）。
+    local got
+    got=$(bash -c 'eval "$(sed -n "/^_gw_days_ago()/,/^}/p" "$1")"; _gw_days_ago 1' _ "$SCRIPT_PATH" 2>/dev/null)
     if grep -qi microsoft /proc/version 2>/dev/null; then
-        log_info "检测到WSL环境"
-        
-        # 检查Windows路径是否存在
-        local windows_path="/mnt/c/Users/HP/.codebuddy/skills/git-workflow"
-        if [ -d "$windows_path" ]; then
-            log_info "Windows路径存在: $windows_path"
-            return 0
-        else
-            log_warn "Windows路径不存在: $windows_path"
-            return 0
-        fi
-    else
-        log_info "不在WSL环境中"
+        log_info "检测到 WSL 环境"
+    fi
+    if [ -n "$got" ]; then
+        log_info "跨平台日期换算可用: _gw_days_ago 1 = $got"
         return 0
     fi
+    log_error "跨平台日期换算不可用（三级兜底全失败）"
+    return 1
 }
 
 # 显示测试结果

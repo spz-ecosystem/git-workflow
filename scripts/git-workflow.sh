@@ -31,6 +31,46 @@ log_success() {
     echo -e "${GREEN}[SUCCESS]${NC} $1"
 }
 
+# ── 跨平台兼容层（2026-11-02）────────────────────────────────────────────────
+# 背景：本工具在 MSYS(Git Bash) / WSL / Linux / macOS 四侧都要能跑。
+#   实测三处真差异：① `date -d`（GNU）vs `date -v`（BSD）；② `cp -r` 自嵌套时
+#   **报错但仍返回 0**（假成功）；③ `read -p` 在 stdin 非 tty（AI/CI/管道）时挂死或空读。
+# 原则：判据收敛到本层，调用点只见函数；**非交互一律 fail-closed**（默认拒绝，不静默放行）。
+
+# 相对天数 → 日期（GNU date -d / BSD date -v / python 三级兜底）
+_gw_days_ago() {
+    local n="${1:?days required}" fmt="${2:-%Y-%m-%d}"
+    if date -d "${n} days ago" +"$fmt" >/dev/null 2>&1; then
+        date -d "${n} days ago" +"$fmt"
+    elif date -v-"${n}"d +"$fmt" >/dev/null 2>&1; then
+        date -v-"${n}"d +"$fmt"
+    else
+        python3 -c 'import datetime,sys;print((datetime.date.today()-datetime.timedelta(days=int(sys.argv[1]))).strftime(sys.argv[2]))' "$n" "$fmt" 2>/dev/null || true
+    fi
+}
+
+# 交互确认：GW_ASSUME_YES=1 直通；stdin 非 tty 一律拒绝（不挂死、不静默放行）
+_gw_confirm() {
+    local prompt="${1:-继续?}" ans=""
+    if [ "${GW_ASSUME_YES:-0}" = "1" ]; then
+        log_info "GW_ASSUME_YES=1 ⟹ 自动确认: $prompt"
+        return 0
+    fi
+    if [ ! -t 0 ]; then
+        log_warn "非交互环境（stdin 非 tty）⟹ 默认拒绝: $prompt"
+        log_warn "确认继续请设 GW_ASSUME_YES=1（或对该命令加 --yes）"
+        return 1
+    fi
+    read -r -p "$prompt" ans || return 1
+    case "$ans" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
+}
+
+# 路径 a 是否位于目录 b 内（防 cp -r 自嵌套；纯字符串，不依赖 realpath）
+_gw_within() {
+    local child="${1%/}" parent="${2%/}"
+    case "$child/" in "$parent"/*) return 0 ;; *) return 1 ;; esac
+}
+
 # 自动检测脚本所在目录 (支持符号链接)
 SKILL_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")/.." && pwd)"
 # 配置文件路径 (优先环境变量, 否则使用脚本同目录下的配置文件)
@@ -306,8 +346,7 @@ branch_management() {
             "$SKILL_DIR/scripts/branch-delete-safety-check.sh" --dry-run "$branch_name"
             
             # 确认删除
-            read -p "确认删除分支 '$branch_name'? (y/N): " confirm
-            if [[ "$confirm" =~ ^[Yy]$ ]]; then
+            if _gw_confirm "确认删除分支 '$branch_name'? (y/N): "; then
                 # 清理关联worktree
                 local worktree_info=$(git worktree list | grep "$branch_name")
                 if [ -n "$worktree_info" ]; then
@@ -418,7 +457,7 @@ branch_management() {
             
             # 2. 清理过期分支
             log_info "2. 检查过期分支（${expire_days}天前）..."
-            local expire_date=$(date -d "${expire_days} days ago" +%Y-%m-%d 2>/dev/null || date -v-${expire_days}d +%Y-%m-%d 2>/dev/null)
+            local expire_date=$(_gw_days_ago "$expire_days")
             local expired_branches=""
             
             if [ -n "$expire_date" ]; then
@@ -465,8 +504,7 @@ branch_management() {
             fi
             
             if [ "$interactive" = true ]; then
-                read -p "确认清理上述分支? (y/N): " confirm
-                if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+                if ! _gw_confirm "确认清理上述分支? (y/N): "; then
                     log_info "取消分支清理"
                     return 0
                 fi
@@ -602,7 +640,7 @@ branch_management() {
                 # 检查是否过期
                 local expire_info=""
                 if [ "$show_expired" = true ]; then
-                    local expire_date=$(date -d "${expire_days} days ago" +%Y-%m-%d 2>/dev/null || date -v-${expire_days}d +%Y-%m-%d 2>/dev/null)
+                    local expire_date=$(_gw_days_ago "$expire_days")
                     if [ -n "$expire_date" ] && [ -n "$last_commit_date" ] && [ "$last_commit_date" \< "$expire_date" ]; then
                         expire_info=" [过期]"
                     fi
@@ -659,7 +697,7 @@ branch_management() {
             # 过期分支
             if [ "$show_expired" = true ]; then
                 echo "=== 过期分支（${expire_days}天前） ==="
-                local expire_date=$(date -d "${expire_days} days ago" +%Y-%m-%d 2>/dev/null || date -v-${expire_days}d +%Y-%m-%d 2>/dev/null)
+                local expire_date=$(_gw_days_ago "$expire_days")
                 local expired_branches=""
                 
                 if [ -n "$expire_date" ]; then
@@ -1102,8 +1140,7 @@ cleanup_management() {
                 echo "以下临时分支将被删除:"
                 echo "$temp_branches"
                 
-                read -p "确认删除这些分支? (y/N): " confirm
-                if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                if _gw_confirm "确认删除这些分支? (y/N): "; then
                     echo "$temp_branches" | xargs git branch -D
                     log_success "临时分支清理完成"
                 else
@@ -1193,49 +1230,135 @@ history_management() {
             ;;
 
         "backup")
-            local backup_path="${1:-$HOME/.codex_backup_$(date +%Y%m%d)}"
-            local repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
+            local backup_path="${1:-$BACKUP_DIR/$(date +%Y%m%d-%H%M%S)}"
+            local repo_root
+            repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+                log_error "不在 git 仓库内，无法备份"
+                return 1
+            }
 
-            log_info "创建工作区备份: $backup_path"
-            cp -r "$repo_root" "$backup_path"
+            # 自嵌套保护：`cp -r` 到自身子目录会报错但**返回 0**（实测假成功）
+            if _gw_within "$backup_path" "$repo_root"; then
+                log_error "备份路径位于仓库内部（$backup_path ⊂ $repo_root）⟹ 会递归复制自身"
+                log_error "请改到仓库外，例如：$HOME/backups/$(basename "$repo_root")"
+                return 1
+            fi
+            mkdir -p "$backup_path" || { log_error "无法创建 $backup_path"; return 1; }
+
+            # ① git 对象：bundle（全部分支/标签；比 cp -r 整个 .git 小得多且可 clone 还原）
+            log_info "备份 git 对象（bundle）..."
+            if git bundle create "$backup_path/repo.bundle" --all >/dev/null 2>&1; then
+                log_success "  repo.bundle $(du -h "$backup_path/repo.bundle" 2>/dev/null | cut -f1)"
+            else
+                log_error "git bundle 失败（仓库可能无任何引用）"
+                rmdir "$backup_path" 2>/dev/null || true
+                return 1
+            fi
+
+            # ② 已跟踪但未提交：patch（可 git apply 还原）
+            if ! git diff --quiet HEAD 2>/dev/null; then
+                if git diff HEAD > "$backup_path/uncommitted.patch" 2>/dev/null; then
+                    log_success "  uncommitted.patch $(wc -l < "$backup_path/uncommitted.patch" | tr -d ' ') 行"
+                fi
+            fi
+
+            # ③ 未跟踪且未被忽略：tar
+            local untracked
+            untracked=$(git ls-files --others --exclude-standard 2>/dev/null)
+            if [ -n "$untracked" ]; then
+                if printf '%s\n' "$untracked" | tar -czf "$backup_path/untracked.tar.gz" -T - 2>/dev/null; then
+                    log_success "  untracked.tar.gz $(printf '%s\n' "$untracked" | wc -l | tr -d ' ') 个文件"
+                fi
+            fi
+
             log_success "备份完成: $backup_path"
-            log_info "核心文件确认:"
-            ls -la "$backup_path/bridge/engine.py" "$backup_path/bridge/server.py" "$backup_path/bridge/constitution.py" 2>/dev/null || log_warn "部分核心文件未找到（可能路径不同）"
+            log_info "还原: git clone repo.bundle <dir>  |  patch: git apply uncommitted.patch"
             ;;
 
         "commit-batch")
-            # 接收模块名和文件路径列表，自动 add + commit
-            local module_name=$1
-            shift
-            local paths="$@"
+            # 用法: commit-batch <模块名> <路径...> [--message <msg>]
+            # 去交互（2026-11-02）：原 `read -p` 在 stdin 非 tty 时挂死/空读。
+            #   优先级 = --message > GW_COMMIT_MESSAGE > 自动生成（并在生成时告警）。
+            local module_name="" msg="${GW_COMMIT_MESSAGE:-}"
+            local -a cb_paths=()
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --message|-m) msg="${2:-}"; shift 2 ;;
+                    --) shift; while [ $# -gt 0 ]; do cb_paths+=("$1"); shift; done ;;
+                    -*) log_error "未知选项: $1"; return 1 ;;
+                    *) if [ -z "$module_name" ]; then module_name="$1"; else cb_paths+=("$1"); fi; shift ;;
+                esac
+            done
 
-            if [ -z "$module_name" ] || [ -z "$paths" ]; then
-                log_error "用法: git-workflow history commit-batch <模块名> <文件路径...>"
-                exit 1
+            if [ -z "$module_name" ] || [ ${#cb_paths[@]} -eq 0 ]; then
+                log_error "用法: git-workflow history commit-batch <模块名> <文件路径...> [--message <msg>]"
+                return 1
             fi
 
-            log_info "提交模块: $module_name"
-            for p in $paths; do
+            log_info "提交模块: $module_name（${#cb_paths[@]} 个路径）"
+            local p
+            for p in "${cb_paths[@]}"; do
                 if [ -e "$p" ]; then
-                    git add "$p"
+                    git add "$p" || log_warn "git add 失败: $p"
                 else
                     log_warn "跳过不存在的文件: $p"
                 fi
             done
 
-            local staged=$(git diff --cached --name-only 2>/dev/null | wc -l)
+            local staged
+            staged=$(git diff --cached --name-only 2>/dev/null | wc -l)
             if [ "$staged" -eq 0 ]; then
                 log_warn "没有文件被暂存，跳过提交"
                 return 0
             fi
 
-            read -p "输入 commit message (留空则使用自动生成): " user_message
-            if [ -z "$user_message" ]; then
-                user_message="feat($module_name): add $module_name module"
+            if [ -z "$msg" ]; then
+                msg="feat($module_name): add $module_name module"
+                log_warn "未提供 --message / GW_COMMIT_MESSAGE ⟹ 使用自动生成: $msg"
             fi
 
-            git commit -m "$user_message"
+            git commit -m "$msg"
             log_success "模块 '$module_name' 提交完成 ($staged 个文件)"
+            ;;
+
+        "split")
+            # 用法: split --onto <base> --groups <groups.json> [--apply] [--allow-dirty] [--json]
+            #   把**已提交的混合提交**按主题拆成多个提交（只重排，不改内容）。
+            local onto="" groups_file="" pass=()
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --onto|--base) onto="${2:-}"; shift 2 ;;
+                    --groups)      groups_file="${2:-}"; shift 2 ;;
+                    --apply|--allow-dirty|--json) pass+=("$1"); shift ;;
+                    -h|--help)
+                        echo "用法: git-workflow history split --onto <base> --groups <groups.json> [--apply] [--allow-dirty] [--json]"
+                        echo ""
+                        echo "  把已提交的混合提交按主题拆成多个提交（只重排，不改内容）。"
+                        echo "  默认 dry-run；--apply 才执行；收尾强制校验终态树与原 HEAD 逐字等价。"
+                        echo ""
+                        echo "  groups.json:"
+                        echo '    {"groups":[{"name":"fix(x): 主题一","paths":["a.sh"]},'
+                        echo '               {"name":"test(x): 主题二","hunks":{"b.py":[1,2]}}]}'
+                        echo ""
+                        echo "  paths = 整文件归属（新增/删除/二进制只能走这里）"
+                        echo "  hunks = 文件内第 N 个 hunk（git diff -U3 顺序，从 1 起）"
+                        return 0 ;;
+                    *) log_error "未知选项: $1"; return 1 ;;
+                esac
+            done
+            [ -n "$onto" ] || { log_error "--onto <base> 必填（拆分起点，不含）"; return 1; }
+            [ -n "$groups_file" ] || { log_error "--groups <groups.json> 必填"; return 1; }
+            [ -f "$groups_file" ] || { log_error "groups 文件不存在: $groups_file"; return 1; }
+
+            local gw_py=""
+            for c in python3 python; do
+                command -v "$c" >/dev/null 2>&1 && { gw_py="$c"; break; }
+            done
+            [ -n "$gw_py" ] || { log_error "找不到 python（split 依赖标准库）"; return 1; }
+
+            "$gw_py" "$SKILL_DIR/scripts/gw_history_split.py" \
+                --repo "$(git rev-parse --show-toplevel)" \
+                --base "$onto" --groups "$groups_file" ${pass[@]+"${pass[@]}"}
             ;;
 
         "--help"|"-h")
@@ -1245,10 +1368,12 @@ history_management() {
             echo ""
             echo "操作:"
             echo "  undo-last           撤销最近一次提交（保留工作区文件）"
+            echo "  split --onto <base> --groups <json> [--apply]"
+            echo "                      拆分已提交的混合提交（支持 hunk 级；默认 dry-run）"
             echo "  split-root          检查巨型初始提交并提示拆分方案"
             echo "  stage-pick          显示文件列表 + 推荐拆分顺序"
-            echo "  backup [路径]        创建工作区完整备份"
-            echo "  commit-batch <模块> <文件...>  自动 add + commit 一个模块"
+            echo "  backup [路径]        备份（git bundle + 未提交 patch + 未跟踪 tar）"
+            echo "  commit-batch <模块> <文件...> [--message <msg>]  自动 add + commit"
             echo ""
             echo "示例:"
             echo "  git-workflow history undo-last"

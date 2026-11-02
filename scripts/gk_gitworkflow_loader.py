@@ -44,9 +44,17 @@ GITWORKFLOW_VERSION = "2.1.0.post1"
 # 2026-10-25（凭据单一入口）：git-workflow.sh 改为 source scripts/gw_credentials.sh，
 #   推送取 token 由 `gh auth token` 改为 `gw_token`（密钥库 → 环境变量 → gh）⟹ 同步更新其 pin。
 #   实测：未更新前任何子命令被 gw_load_guard 判 tampered exit 2（同 09-23/09-24 的即时耦合）。
+# 2026-11-02（跨平台层 + history split）：
+#   · 新增 `_gw_days_ago` / `_gw_confirm` / `_gw_within`（GNU/BSD date 双分支、
+#     非交互 fail-closed、cp 自嵌套判定）；`backup` 改 git bundle + patch + untracked tar；
+#     `commit-batch` 去交互（`--message` / `GW_COMMIT_MESSAGE`）。
+#   · `history` 新增 `split`（支持 **hunk 级**拆分已提交的混合提交），实现落
+#     `scripts/gw_history_split.py` ⟹ **一并纳入 pin**（核心能力，被改后果严重）。
+#   ⟹ 同步更新 git-workflow.sh 的 pin + 新增 gw_history_split.py。
 _GITWORKFLOW_PINS = {
     "2.1.0.post1": {
-        "git-workflow.sh": "130f78363716c9f0890af2f9d6ed6868706ab091d0e03b2c4f5a2ec1562b6e08",
+        "git-workflow.sh": "ce4583cf93b11583527faddf883d58d01d04beedf6599291ea9588d5e4569555",
+        "gw_history_split.py": "08c83f3c1b960333cf8c8adba0cc3495d9bdf4d26d08200f0b06e5b5d9ceae5a",
         "branch-delete-safety-check.sh": "5f9076defd07011046662ec55fea5f762bfe5cae6eab3c6aac72fa9d18efecd3",
     },
 }

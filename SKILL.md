@@ -24,7 +24,7 @@ git-workflow
 ├── release       # 发版预检
 ├── security      # 安全审查
 ├── cleanup       # 清理工具
-└── history       # 历史管理 (撤销/拆分/备份/批量提交)
+└── history       # 历史管理 (撤销/split 拆分/备份/批量提交)
 ```
 
 ## 使用场景
@@ -546,6 +546,18 @@ ln -s /mnt/c/Users/HP/.codebuddy/skills/git-workflow /root/.codebuddy/skills/git
 - **文档文件**：`docs/`
 
 ## 更新记录
+
+- **2026-11-02**：history 新增 `split`（**hunk 级**拆分已提交的混合提交）+ 跨平台层
+- `split --onto <base> --groups <json> [--apply]`：默认 dry-run；`paths` = 整文件、
+  `hunks` = 文件内第 N 个 hunk；三条不变量（**零遗漏** / **只重排不改内容** / 失败回滚），
+  收尾强制树等价校验（`git diff <orig> HEAD` 必须为空）
+- 跨平台层：`_gw_days_ago`（GNU/BSD/python 三级兜底）、`_gw_confirm`（非交互 **fail-closed**，
+  `GW_ASSUME_YES=1` 放行）、`_gw_in_repo`（自嵌套判定走 `git rev-parse --absolute-git-dir`，
+  规避 MSYS `/tmp` 与 `C:/...` 的形态分裂）
+- `backup` 改为 `git bundle` + `uncommitted.patch` + `untracked.tar.gz`
+  （原 `cp -r` 整仓复制，且自嵌套时报错仍返回 0 = **假成功**）
+- `commit-batch` 去交互：`--message` / `GW_COMMIT_MESSAGE`
+- 核心脚本 pin 同步（loader 的 SHA256 校验对改动**即时生效**，改脚本不更新 pin ⟹ 直接 tampered）
 
 - **2026-05-09**：更新文档，添加新功能说明
 - 添加分支状态报告功能

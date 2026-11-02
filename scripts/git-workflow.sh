@@ -65,10 +65,22 @@ _gw_confirm() {
     case "$ans" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
 }
 
-# 路径 a 是否位于目录 b 内（防 cp -r 自嵌套；纯字符串，不依赖 realpath）
-_gw_within() {
-    local child="${1%/}" parent="${2%/}"
-    case "$child/" in "$parent"/*) return 0 ;; *) return 1 ;; esac
+# 备份目标是否落在**同一仓库**内（防自嵌套）。
+#   为什么不用字符串前缀：MSYS 下 `pwd` 给 `/tmp/x`、`git rev-parse --show-toplevel` 给
+#   `C:/Users/.../Temp/x` —— 同一目录两种形态，`realpath` 也不解析 MSYS 的 `/tmp` 映射
+#   （实测 `realpath -m /tmp` 原样返回 `/tmp`）⟹ 前缀比较**结构性失效**。
+#   正解：向上找最近存在的目录，用 `git rev-parse --absolute-git-dir` 比较（git 自己归一）。
+_gw_in_repo() {
+    local target="${1:-}" repo="${2:-}" d ga gb
+    d="$target"
+    while [ -n "$d" ] && [ ! -d "$d" ]; do
+        case "$d" in "/"|"."|"") return 1 ;; esac
+        d=$(dirname "$d")
+    done
+    [ -d "$d" ] || return 1
+    ga=$(git -C "$d" rev-parse --absolute-git-dir 2>/dev/null) || return 1
+    gb=$(git -C "$repo" rev-parse --absolute-git-dir 2>/dev/null) || return 1
+    [ "$ga" = "$gb" ]
 }
 
 # 自动检测脚本所在目录 (支持符号链接)
@@ -1232,7 +1244,7 @@ history_management() {
             }
 
             # 自嵌套保护：`cp -r` 到自身子目录会报错但**返回 0**（实测假成功）
-            if _gw_within "$backup_path" "$repo_root"; then
+            if _gw_in_repo "$backup_path" "$repo_root"; then
                 log_error "备份路径位于仓库内部（$backup_path ⊂ $repo_root）⟹ 会递归复制自身"
                 log_error "请改到仓库外，例如：$HOME/backups/$(basename "$repo_root")"
                 return 1

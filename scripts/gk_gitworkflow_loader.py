@@ -53,7 +53,7 @@ GITWORKFLOW_VERSION = "2.1.0.post1"
 #   ⟹ 同步更新 git-workflow.sh 的 pin + 新增 gw_history_split.py。
 _GITWORKFLOW_PINS = {
     "2.1.0.post1": {
-        "git-workflow.sh": "5f9ad9e583ac8d132d2c414c5343c9d557b7dbb205b8fa7b6f8d18f3fd6d0268",
+        "git-workflow.sh": "db1592ff2ddfba39188a435eba2161516ed36816d58734bf8d26eec910d4ec00",
         "gw_history_split.py": "08c83f3c1b960333cf8c8adba0cc3495d9bdf4d26d08200f0b06e5b5d9ceae5a",
         "branch-delete-safety-check.sh": "5f9076defd07011046662ec55fea5f762bfe5cae6eab3c6aac72fa9d18efecd3",
     },

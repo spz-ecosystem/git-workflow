@@ -82,20 +82,21 @@ setup_paths() {
     # 主目录
     HOME_DIR="$HOME"
     
-    # .codebuddy 目录
-    CODEBUDDY_DIR="$HOME_DIR/.codebuddy"
+    # 技能根命名空间（2026-11-02：codebuddy 已弃用，默认 .trae；GIT_WORKFLOW_NAMESPACE 可覆盖）
+    SKILL_NS="${GIT_WORKFLOW_NAMESPACE:-.trae}"
+    SKILL_HOME="$HOME_DIR/$SKILL_NS"
     
     # skills 目录
-    SKILLS_DIR="$CODEBUDDY_DIR/skills"
+    SKILLS_DIR="$SKILL_HOME/skills"
     
     # git-workflow 目录
     GIT_WORKFLOW_DIR="$SKILLS_DIR/git-workflow"
     
     # 日志目录
-    LOG_DIR="$CODEBUDDY_DIR/logs/git-workflow"
+    LOG_DIR="$SKILL_HOME/logs/git-workflow"
     
     # 备份目录
-    BACKUP_DIR="$CODEBUDDY_DIR/backups/git-workflow"
+    BACKUP_DIR="$SKILL_HOME/backups/git-workflow"
     
     # 配置文件
     CONFIG_FILE="$GIT_WORKFLOW_DIR/git-workflow.yaml"
@@ -107,7 +108,7 @@ setup_paths() {
 create_directories() {
     log_info "创建目录..."
     
-    mkdir -p "$CODEBUDDY_DIR"
+    mkdir -p "$SKILL_HOME"
     mkdir -p "$SKILLS_DIR"
     mkdir -p "$GIT_WORKFLOW_DIR"
     mkdir -p "$LOG_DIR"
@@ -142,10 +143,10 @@ create_symlinks() {
     mkdir -p "$bin_dir"
     
     # 创建 git-workflow 命令
-    cat > "$bin_dir/git-workflow" << 'EOF'
+    cat > "$bin_dir/git-workflow" << EOF
 #!/bin/bash
 # Git Workflow Umbrella Skill - 命令入口
-exec ~/.codebuddy/skills/git-workflow/scripts/git-workflow.sh "$@"
+exec "$GIT_WORKFLOW_DIR/scripts/git-workflow.sh" "\$@"
 EOF
     
     chmod +x "$bin_dir/git-workflow"
@@ -165,10 +166,10 @@ setup_windows_wsl() {
     if [[ "$WSL" == true ]]; then
         log_info "配置 Windows/WSL 路径..."
         
-        # 检查 Windows .codebuddy 目录
-        local windows_codebuddy="/mnt/c/Users/HP/.codebuddy"
+        # 检查 Windows 侧同名命名空间（默认 .trae）
+        local windows_codebuddy="/mnt/c/Users/HP/$SKILL_NS"
         if [ -d "$windows_codebuddy" ]; then
-            log_info "检测到 Windows .codebuddy 目录"
+            log_info "检测到 Windows $SKILL_NS 目录"
             
             # 创建符号链接（如果不存在）
             if [ ! -L "$GIT_WORKFLOW_DIR" ] && [ ! -d "$GIT_WORKFLOW_DIR" ]; then

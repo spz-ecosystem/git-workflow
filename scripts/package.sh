@@ -115,13 +115,20 @@ echo "Git Workflow Umbrella Skill 安装"
 echo "=========================================="
 echo ""
 
-# 检查是否已安装
-if [ -d "$HOME/.codebuddy/skills/git-workflow" ]; then
-    echo "检测到已安装的版本"
-    read -p "是否覆盖安装? (y/N): " confirm
-    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-        echo "取消安装"
-        exit 0
+# 检查是否已安装（2026-11-02：默认命名空间 .trae，兼容旧 .codebuddy）
+_PKG_NS="${GIT_WORKFLOW_NAMESPACE:-.trae}"
+_PKG_SKILL="$HOME/$_PKG_NS/skills/git-workflow"
+[ -d "$_PKG_SKILL" ] || _PKG_SKILL="$HOME/.codebuddy/skills/git-workflow"
+if [ -d "$_PKG_SKILL" ]; then
+    echo "检测到已安装的版本: $_PKG_SKILL"
+    if [ "${GW_ASSUME_YES:-0}" = "1" ]; then
+        echo "[INFO] GW_ASSUME_YES=1 ⟹ 自动覆盖"
+    else
+        read -p "是否覆盖安装? (y/N): " confirm
+        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+            echo "取消安装"
+            exit 0
+        fi
     fi
 fi
 

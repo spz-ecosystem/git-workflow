@@ -28,8 +28,12 @@ log_success() {
     echo -e "${GREEN}[SUCCESS]${NC} $1"
 }
 
-# 配置文件路径
-CONFIG_FILE="${GIT_WORKFLOW_CONFIG:-$HOME/.codebuddy/skills/git-workflow/git-workflow.yaml}"
+# 配置文件路径（2026-11-02：默认改为**脚本自身位置**，不再写死 .codebuddy 旧副本）
+#   优先级：env GIT_WORKFLOW_CONFIG > <skill>/git-workflow.yaml
+#   原因：`.codebuddy/skills/git-workflow` 是 5-31 的独立副本；删掉它之后这里若仍写死，
+#   会静默退回内置默认值（保护分支/最小年龄全部失效而不报错）。
+_BD_SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONFIG_FILE="${GIT_WORKFLOW_CONFIG:-$_BD_SKILL_DIR/git-workflow.yaml}"
 
 # 默认配置
 DEFAULT_PROTECTED_BRANCHES=("main" "master" "develop" "release" "production")

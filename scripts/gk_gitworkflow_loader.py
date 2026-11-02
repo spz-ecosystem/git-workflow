@@ -55,7 +55,7 @@ _GITWORKFLOW_PINS = {
     "2.1.0.post1": {
         "git-workflow.sh": "2cfe8c3febb6cd7ff7e1196c201b2cef7810c99e0a4ccd18515561af45c1add2",
         "gw_history_split.py": "08c83f3c1b960333cf8c8adba0cc3495d9bdf4d26d08200f0b06e5b5d9ceae5a",
-        "branch-delete-safety-check.sh": "5f9076defd07011046662ec55fea5f762bfe5cae6eab3c6aac72fa9d18efecd3",
+        "branch-delete-safety-check.sh": "0cf22c748aa218dbd672c83eaf10f684c6cb9d0084aeb54bae86ab316896e3f4",
     },
 }
 # 技能能力白名单（对齐 manifest intercept：skill 的七模块即其对外能力）

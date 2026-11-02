@@ -4,6 +4,10 @@
 
 set -e
 
+# 技能根命名空间（2026-11-02：codebuddy 已弃用，默认 .trae）
+SKILL_NS="${GIT_WORKFLOW_NAMESPACE:-.trae}"
+SKILL_HOME="$HOME/$SKILL_NS"
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -35,12 +39,12 @@ confirm_uninstall() {
     echo "=========================================="
     echo ""
     echo "此操作将删除以下内容:"
-    echo "  - ~/.codebuddy/skills/git-workflow/"
-    echo "  - ~/.codebuddy/logs/git-workflow/"
-    echo "  - ~/.codebuddy/backups/git-workflow/"
+    echo "  - ~/$SKILL_NS/skills/git-workflow/"
+    echo "  - ~/$SKILL_NS/logs/git-workflow/"
+    echo "  - ~/$SKILL_NS/backups/git-workflow/"
     echo "  - ~/.local/bin/git-workflow"
     echo ""
-    echo "配置文件和日志将被备份到 ~/.codebuddy/backups/"
+    echo "配置文件和日志将被备份到 ~/$SKILL_NS/backups/"
     echo ""
     
     read -p "确认卸载? (y/N): " confirm
@@ -54,24 +58,24 @@ confirm_uninstall() {
 backup_data() {
     log_info "备份配置和日志..."
     
-    local backup_dir="$HOME/.codebuddy/backups/git-workflow-uninstall-$(date +%Y%m%d_%H%M%S)"
+    local backup_dir="$SKILL_HOME/backups/git-workflow-uninstall-$(date +%Y%m%d_%H%M%S)"
     mkdir -p "$backup_dir"
     
     # 备份配置文件
-    if [ -f "$HOME/.codebuddy/skills/git-workflow/git-workflow.yaml" ]; then
-        cp "$HOME/.codebuddy/skills/git-workflow/git-workflow.yaml" "$backup_dir/"
+    if [ -f "$SKILL_HOME/skills/git-workflow/git-workflow.yaml" ]; then
+        cp "$SKILL_HOME/skills/git-workflow/git-workflow.yaml" "$backup_dir/"
         log_success "配置文件已备份"
     fi
     
     # 备份日志
-    if [ -d "$HOME/.codebuddy/logs/git-workflow" ]; then
-        cp -r "$HOME/.codebuddy/logs/git-workflow" "$backup_dir/"
+    if [ -d "$SKILL_HOME/logs/git-workflow" ]; then
+        cp -r "$SKILL_HOME/logs/git-workflow" "$backup_dir/"
         log_success "日志已备份"
     fi
     
     # 备份自定义脚本
-    if [ -d "$HOME/.codebuddy/skills/git-workflow/scripts" ]; then
-        cp -r "$HOME/.codebuddy/skills/git-workflow/scripts" "$backup_dir/"
+    if [ -d "$SKILL_HOME/skills/git-workflow/scripts" ]; then
+        cp -r "$SKILL_HOME/skills/git-workflow/scripts" "$backup_dir/"
         log_success "脚本已备份"
     fi
     
@@ -83,20 +87,20 @@ remove_files() {
     log_info "删除文件..."
     
     # 删除主目录
-    if [ -d "$HOME/.codebuddy/skills/git-workflow" ]; then
-        rm -rf "$HOME/.codebuddy/skills/git-workflow"
+    if [ -d "$SKILL_HOME/skills/git-workflow" ]; then
+        rm -rf "$SKILL_HOME/skills/git-workflow"
         log_success "删除 skills/git-workflow"
     fi
     
     # 删除日志目录
-    if [ -d "$HOME/.codebuddy/logs/git-workflow" ]; then
-        rm -rf "$HOME/.codebuddy/logs/git-workflow"
+    if [ -d "$SKILL_HOME/logs/git-workflow" ]; then
+        rm -rf "$SKILL_HOME/logs/git-workflow"
         log_success "删除 logs/git-workflow"
     fi
     
     # 删除备份目录
-    if [ -d "$HOME/.codebuddy/backups/git-workflow" ]; then
-        rm -rf "$HOME/.codebuddy/backups/git-workflow"
+    if [ -d "$SKILL_HOME/backups/git-workflow" ]; then
+        rm -rf "$SKILL_HOME/backups/git-workflow"
         log_success "删除 backups/git-workflow"
     fi
     
@@ -112,7 +116,7 @@ cleanup_symlinks() {
     log_info "清理符号链接..."
     
     # 检查并删除符号链接
-    local symlink="$HOME/.codebuddy/skills/git-workflow"
+    local symlink="$SKILL_HOME/skills/git-workflow"
     if [ -L "$symlink" ]; then
         rm -f "$symlink"
         log_success "删除符号链接"
@@ -126,7 +130,7 @@ verify_uninstall() {
     local success=true
     
     # 检查目录是否删除
-    if [ -d "$HOME/.codebuddy/skills/git-workflow" ]; then
+    if [ -d "$SKILL_HOME/skills/git-workflow" ]; then
         log_warn "skills/git-workflow 目录仍然存在"
         success=false
     fi
@@ -152,12 +156,12 @@ show_uninstall_info() {
     echo "=========================================="
     echo ""
     echo "已删除:"
-    echo "  - ~/.codebuddy/skills/git-workflow/"
-    echo "  - ~/.codebuddy/logs/git-workflow/"
-    echo "  - ~/.codebuddy/backups/git-workflow/"
+    echo "  - ~/$SKILL_NS/skills/git-workflow/"
+    echo "  - ~/$SKILL_NS/logs/git-workflow/"
+    echo "  - ~/$SKILL_NS/backups/git-workflow/"
     echo "  - ~/.local/bin/git-workflow"
     echo ""
-    echo "备份位置: ~/.codebuddy/backups/git-workflow-uninstall-*"
+    echo "备份位置: ~/$SKILL_NS/backups/git-workflow-uninstall-*"
     echo ""
     echo "已删除的功能:"
     echo "  - 分支状态报告"

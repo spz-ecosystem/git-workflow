@@ -20,6 +20,15 @@
   （见 2026-09-23 起的历次记录，均在改脚本当次即触发）
 
 ### 修复
+- 🐞 **push ↔ gatekeeper 委托链三处集成缺陷**（2026-11-03 实测：`push push` 被
+  `Direct push to 'main' blocked` 拦下，但该仓历史全是直推 main）：
+  - `push push` 新增 `--allow-main`，透传给 `gatekeeper push confirm`（仅本次调用有效）；
+  - 委托被拒时输出可操作指引（`--allow-main` 或 `gatekeeper-cli.sh push auth-main`），
+    不再只回一句「委托失败」；并修正 `set -e` 下裸调用的中止风险；
+  - `pr-fallback` 远端白名单改为 `GW_PUSH_REMOTE_ALLOW` 可配（默认常见托管站），
+    原实现硬编码两个组织前缀 ⟹ 换机器/换组织恒失败。
+  对应门禁侧修复：main 门禁按目标仓显式授权判定（`--allow-main` / `GK_PUSH_ALLOW_MAIN` /
+  auth-main），stage 闸只对本门禁仓生效，错误文案不再断言 “This repo uses PR workflow”。
 - 🧹 **行尾归一**：`scripts/gk_gitworkflow_loader.py` 工作树为 CRLF、索引为 LF ⟹
   `core.autocrlf=false` 下呈现整文件 184 行假差异，掩盖真实的 pin 单行变更
 

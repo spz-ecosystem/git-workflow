@@ -35,7 +35,7 @@ git-workflow version              # 2.1.1
 
 ```bash
 git-workflow push precheck                      # 预检（依赖同级 github-push 模块；缺失则跳过并提示）
-git-workflow push push [--remote origin] [--branch <name>] [--timeout 60] [--push-url <url>]
+git-workflow push push [--remote origin] [--branch <name>] [--timeout 60] [--push-url <url>] [--allow-main]
 git-workflow push pr-fallback                   # 建 feature/<时间戳> 分支 + 推送 + gh pr create
 ```
 
@@ -43,9 +43,12 @@ git-workflow push pr-fallback                   # 建 feature/<时间戳> 分支
   1. 同级存在 `spz-gatekeeper-r-sequence/gatekeeper-cli.sh` → 委托 `push confirm`（含远端白名单验证），
      并置 `GIT_WORKFLOW_DELEGATING=1` 防「委托→提醒→委托」环路；
   2. 委托失败（或不存在）→ 原生 `git push`：`timeout` 默认 60s，最多 3 次，间隔 5s。
+- 直推 `main/master` 在门禁侧默认被拒；`--allow-main` 会把该**显式授权**透传给委托
+  （仅本次调用有效，不写盘）。被拒时输出会给出 `--allow-main` 与 `auth-main` 两条路径。
 - 成功后若配置 `auto_cleanup: true`，自动执行 `branch cleanup --non-interactive --no-remote`。
-- `pr-fallback` 当前仅放行 `github.com/spz-ecosystem/*` 与 `atomgit.com/pjh3955/*` 的 origin；
-  其他远端会被拒（避免把代码推到未授权仓）。
+- `pr-fallback` 的 origin 必须命中远端白名单：默认放行常见托管站
+  （`github.com/` `gitlab.com/` `atomgit.com/` `gitee.com/` `codeberg.org/`），
+  可用 `GW_PUSH_REMOTE_ALLOW`（逗号/冒号分隔）收紧或放开；未命中直接拒绝。
 
 ## branch
 
@@ -152,6 +155,7 @@ git-workflow history commit-batch <模块> <文件...> [--message <msg>]
 | `GIT_WORKFLOW_AUTO_CLEANUP` | `true` 时等效于配置 `auto_cleanup: true` |
 | `GW_ASSUME_YES` | `1` = 非交互确认直通（CI 用） |
 | `GW_COMMIT_MESSAGE` | `commit-batch` 默认提交信息 |
+| `GW_PUSH_REMOTE_ALLOW` | `pr-fallback` 远端白名单（逗号/冒号分隔；默认常见托管站） |
 
 ## 非交互与确认
 

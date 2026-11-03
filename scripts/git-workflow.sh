@@ -223,7 +223,7 @@ push_management() {
             ;;
         "push")
             log_info "执行标准推送..."
-            local push_url="" remote="origin" branch="" timeout=60
+            local push_url="" remote="origin" branch="" timeout=60 allow_main=0
 
             # Parse args for branch and remote
             while [ $# -gt 0 ]; do
@@ -232,6 +232,9 @@ push_management() {
                     --branch) branch="$2"; shift 2 ;;
                     --timeout) timeout="$2"; shift 2 ;;
                     --push-url) push_url="$2"; shift 2 ;;
+                    # 2026-11-03（集成修复）：直推 main 的**显式**授权位 —— 原实现只能绕到
+                    #   gatekeeper CLI 敲 auth-main，委托链路上没有任何透传口。
+                    --allow-main) allow_main=1; shift ;;
                     *) break ;;
                 esac
             done
@@ -246,10 +249,28 @@ push_management() {
             if [ -f "$gk_cli" ]; then
                 log_info "检测到 spz-gatekeeper-r-sequence → 委托推送 (含远端白名单验证)"
                 local repo="$(pwd)"
-                GIT_WORKFLOW_DELEGATING=1 bash "$gk_cli" push confirm --repo "$repo" --remote "$remote" --branch "$branch" --push-url "$push_url" 2>&1
-                local gk_exit=$?
-                [ $gk_exit -eq 0 ] && log_success "gatekeeper 委托推送成功" || log_warn "gatekeeper 委托失败 (exit=$gk_exit), 降级到原生 push"
-                [ $gk_exit -eq 0 ] && return 0
+                local -a _gk_extra=()
+                [ "$allow_main" = "1" ] && _gk_extra+=("--allow-main")
+                local _gk_out gk_exit=0
+                # `|| gk_exit=$?` —— 本脚本全局 `set -e`：裸赋值会在委托失败时直接中止
+                #   （原实现的裸调用同样有此风险），故显式接住返回码。
+                _gk_out=$(GIT_WORKFLOW_DELEGATING=1 bash "$gk_cli" push confirm --repo "$repo" \
+                    --remote "$remote" --branch "$branch" --push-url "$push_url" \
+                    ${_gk_extra[@]+"${_gk_extra[@]}"} 2>&1) || gk_exit=$?
+                printf '%s\n' "$_gk_out"
+                if [ $gk_exit -eq 0 ]; then
+                    log_success "gatekeeper 委托推送成功"
+                    return 0
+                fi
+                log_warn "gatekeeper 委托失败 (exit=$gk_exit), 降级到原生 push"
+                # 2026-11-03：把 gatekeeper 的拒绝**翻译成可操作指令**（原实现只说"委托失败"）
+                case "$_gk_out" in
+                    *"Direct push to"*|*"blocked by policy"*)
+                        log_info "提示: 直推 main 需**显式授权** —— 加 --allow-main（仅本次调用有效）："
+                        log_info "        git-workflow push push --allow-main"
+                        log_info "      或先开 10 分钟一次性授权：gatekeeper-cli.sh push auth-main"
+                        ;;
+                esac
             fi
 
             # 2026-10-26 修复（缺陷：假成功/假推送）：
@@ -293,18 +314,22 @@ push_management() {
             local feature_branch="feature/$(date +%Y%m%d-%H%M%S)"
 
             # F8.1: pr-fallback 远端白名单验证 (独立实现, 不依赖 gatekeeper CLI)
+            # 2026-11-03（集成修复）：白名单**可配**。原实现硬编码两个组织前缀
+            #   （github.com/spz-ecosystem/ + atomgit.com/pjh3955/）⟹ 换机器/换组织后
+            #   pr-fallback 恒失败，与 gatekeeper 已修掉的 GK_PUSH_REMOTE_ALLOW 同族问题。
             local _pr_url; _pr_url=$(git remote get-url origin 2>/dev/null || echo "")
-            local _pr_allowed=false
-            for _pr_pat in "github.com/spz-ecosystem/" "atomgit.com/pjh3955/"; do
-                if echo "$_pr_url" | grep -qi "$_pr_pat"; then
-                    _pr_allowed=true
-                    break
-                fi
-            done
+            local _pr_allow="${GW_PUSH_REMOTE_ALLOW:-github.com/,gitlab.com/,atomgit.com/,gitee.com/,codeberg.org/}"
+            local _pr_lc; _pr_lc=$(printf '%s' "$_pr_url" | tr 'A-Z' 'a-z')
+            local _pr_allowed=false _pr_pat
+            while IFS= read -r _pr_pat; do
+                [ -n "$_pr_pat" ] || continue
+                case "$_pr_lc" in
+                    *"$(printf '%s' "$_pr_pat" | tr 'A-Z' 'a-z')"*) _pr_allowed=true; break ;;
+                esac
+            done < <(printf '%s\n' "$_pr_allow" | tr ',:' '\n')
             if [ "$_pr_allowed" != "true" ]; then
                 log_error "远端白名单验证失败: origin ($_pr_url) 不在允许列表中"
-                log_info "允许列表: github.com/spz-ecosystem/*, atomgit.com/pjh3955/*"
-                log_info "请检查 git remote -v 确认远端配置"
+                log_info "允许列表（可用 GW_PUSH_REMOTE_ALLOW 覆盖）: $_pr_allow"
                 return 1
             fi
             log_success "远端白名单验证通过"
@@ -322,6 +347,15 @@ push_management() {
             echo "  precheck       推送前预检"
             echo "  push           执行推送"
             echo "  pr-fallback    分支保护时改走 PR"
+            echo ""
+            echo "push 选项:"
+            echo "  --remote <名>     远端名（默认 origin）"
+            echo "  --branch <名>     分支（默认当前分支）"
+            echo "  --timeout <秒>    单次推送超时（默认 60）"
+            echo "  --allow-main      委托 gatekeeper 时显式授权直推 main/master（仅本次有效）"
+            echo ""
+            echo "环境变量:"
+            echo "  GW_PUSH_REMOTE_ALLOW   pr-fallback 远端白名单（逗号/冒号分隔，默认常见托管站）"
             return 0
             ;;
 

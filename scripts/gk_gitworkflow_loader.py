@@ -53,9 +53,11 @@ GITWORKFLOW_VERSION = "2.1.1"
 #   ⟹ 同步更新 git-workflow.sh 的 pin + 新增 gw_history_split.py。
 # 2026-11-03（v2.1.1 收口）：git-workflow.sh 版本声明对齐（原 2.1.0 ⟹ 2.1.1，与本文
 #   GITWORKFLOW_VERSION / SKILL.md / yaml / package.sh 同值）⟹ 同步更新其 pin。
+# 2026-11-03（集成修复）：`push push` 新增 `--allow-main` 透传 + 拒绝时给出可操作指引；
+#   `pr-fallback` 白名单改 `GW_PUSH_REMOTE_ALLOW` ⟹ 再改 git-workflow.sh ⟹ pin 同步。
 _GITWORKFLOW_PINS = {
     "2.1.1": {
-        "git-workflow.sh": "a881308f2b0a726151d51e3a45dbe197ac8dc8606307f2fbcbf447bc5667ba42",
+        "git-workflow.sh": "b9dc4a8c431817596f4c52b915a365056e7f1d099a55478cc4a423ba755fd4e4",
         "gw_history_split.py": "08c83f3c1b960333cf8c8adba0cc3495d9bdf4d26d08200f0b06e5b5d9ceae5a",
         "branch-delete-safety-check.sh": "0cf22c748aa218dbd672c83eaf10f684c6cb9d0084aeb54bae86ab316896e3f4",
     },

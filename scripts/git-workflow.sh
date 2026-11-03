@@ -1,9 +1,10 @@
 #!/bin/bash
-# Git Workflow Umbrella Skill - 主脚本 (v2.1.0)
+# Git Workflow Umbrella Skill - 主脚本 (v2.1.1)
 # Copyright (c) 2026 Pu Junhan. MulanPSL-2.0
 # 统一管理所有git工作流操作 (7 模块: push/branch/worktree/release/security/cleanup/history)
 # 2026-08-30 v2.1.0: 加载安全网（gk_gitworkflow_loader.py SHA256 pin 五源分流，tampered→fail-closed）
 #                     + selfcheck 子命令 + 委托 spz-gatekeeper 防循环哨兵（GIT_WORKFLOW_DELEGATING）
+# 2026-11-03 v2.1.1: 版本号与其他声明源对齐（loader / SKILL.md / yaml / package.sh 同值），pin 同步
 
 set -e
 
@@ -1550,7 +1551,7 @@ main() {
             return $?
             ;;
         "version")
-            echo "git-workflow v2.1.0"
+            echo "git-workflow v2.1.1"
             return 0
             ;;
     esac

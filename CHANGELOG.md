@@ -5,6 +5,21 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.1.1] - 2026-11-03
+
+### 变更
+- 🔧 **版本声明对齐**：`git-workflow.sh --version` / `SKILL.md` / `git-workflow.yaml` /
+  `templates/git-workflow.yaml` / `package.sh` 统一到 `2.1.1`。此前五处分散为
+  `2.1.0` / `2.0.0` / `1.0.0` ⟹ 装的到底是哪一版无法判断，`package.sh` 打出的包名也停留在
+  `1.0.0`
+- 🔐 **loader pin 同步**：`gk_gitworkflow_loader.py` 版本与 pin 表更新到 `2.1.1`。
+  核心脚本与 pin 的耦合是**即时**的：未同步 ⟹ `gw_load_guard` 判 `tampered` 并 `exit 2`
+  （见 2026-09-23 起的历次记录，均在改脚本当次即触发）
+
+### 修复
+- 🧹 **行尾归一**：`scripts/gk_gitworkflow_loader.py` 工作树为 CRLF、索引为 LF ⟹
+  `core.autocrlf=false` 下呈现整文件 184 行假差异，掩盖真实的 pin 单行变更
+
 ## [2.1.0] - 2026-08-30
 
 ### 新增

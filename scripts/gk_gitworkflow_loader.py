@@ -28,7 +28,7 @@ from pathlib import Path
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = SKILL_DIR / "scripts"
-GITWORKFLOW_VERSION = "2.1.0.post1"
+GITWORKFLOW_VERSION = "2.1.1"
 # 核心脚本 pin 表（version → {filename: sha256}）。登记 = 跑过测试/验收的当前产物。
 # 修改任一核心脚本后须更新本 pin（对齐 _RELEASE_PINS 纪律：未登记 = dev WARN）。
 # 2026-09-23（ECC-A91DC4562198 收编）：`git-workflow.sh` 新增 `worktree create --from/--json`
@@ -51,9 +51,11 @@ GITWORKFLOW_VERSION = "2.1.0.post1"
 #   · `history` 新增 `split`（支持 **hunk 级**拆分已提交的混合提交），实现落
 #     `scripts/gw_history_split.py` ⟹ **一并纳入 pin**（核心能力，被改后果严重）。
 #   ⟹ 同步更新 git-workflow.sh 的 pin + 新增 gw_history_split.py。
+# 2026-11-03（v2.1.1 收口）：git-workflow.sh 版本声明对齐（原 2.1.0 ⟹ 2.1.1，与本文
+#   GITWORKFLOW_VERSION / SKILL.md / yaml / package.sh 同值）⟹ 同步更新其 pin。
 _GITWORKFLOW_PINS = {
-    "2.1.0.post1": {
-        "git-workflow.sh": "2cfe8c3febb6cd7ff7e1196c201b2cef7810c99e0a4ccd18515561af45c1add2",
+    "2.1.1": {
+        "git-workflow.sh": "a881308f2b0a726151d51e3a45dbe197ac8dc8606307f2fbcbf447bc5667ba42",
         "gw_history_split.py": "08c83f3c1b960333cf8c8adba0cc3495d9bdf4d26d08200f0b06e5b5d9ceae5a",
         "branch-delete-safety-check.sh": "0cf22c748aa218dbd672c83eaf10f684c6cb9d0084aeb54bae86ab316896e3f4",
     },

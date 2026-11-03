@@ -1,6 +1,6 @@
 ---
 name: git-workflow
-description: Git工作流统一管理skill，整合推送、分支、worktree、发版预检、安全审查、清理和历史管理工具。v2.0.0
+description: Git工作流统一管理skill，整合推送、分支、worktree、发版预检、安全审查、清理和历史管理工具。v2.1.1
 ---
 
 # Git Workflow Umbrella Skill

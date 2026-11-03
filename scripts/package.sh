@@ -30,7 +30,7 @@ log_success() {
 
 # 配置
 PACKAGE_NAME="git-workflow"
-VERSION="1.0.0"
+VERSION="2.1.1"
 PACKAGE_DIR="$PACKAGE_NAME-$VERSION"
 ARCHIVE_NAME="$PACKAGE_DIR.tar.gz"
 

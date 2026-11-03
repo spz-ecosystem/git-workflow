@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""git-workflow → gatekeeper 委托链的集成臂（2026-11-03）。
+"""git-workflow 的**解绑**与**可选委托**臂（2026-11-03）。
 
-**现场**：`git-workflow push push` 委托 `gatekeeper push confirm` 时，
-① 调用方没有透传「直推 main」授权位（只能绕到 gatekeeper CLI 敲 auth-main）；
-② 委托失败只回「委托失败」四个字，不给可操作指引；
-③ `pr-fallback` 白名单硬编码两个组织前缀 ⟹ 换机器/换组织恒失败。
+定位：git-workflow 是开源插件 —— 不得因为「同级目录里恰好有个别的技能」就改变推送行为。
+用户可能有自己的专属工具。故外部增强一律**默认关闭**、显式开启：
+
+  · `push` 默认走原生 `git push`；委托需 `GIT_WORKFLOW_DELEGATE` / `push.delegate`；
+  · `push precheck` 不再自动调用 `../github-push`；需 `GIT_WORKFLOW_PRECHECK_CLI` /
+    `push.precheck_cli`；
+  · 启用委托后：透传 `--allow-main`、被拒时给可操作指引、失败回落原生 push。
 
 覆盖（离线、无网络）：
-  · `test_allow_main_flag_is_forwarded`      —— `--allow-main` 必须出现在委托参数里；
-  · `test_flag_absent_by_default`            —— 不带该 flag 时**不得**透传（防默认放宽）；
-  · `test_blocked_delegation_gives_hint`     —— 委托被拒 ⟹ 输出含 `--allow-main` 与 `auth-main` 指引；
-  · `test_pr_fallback_rejects_unlisted_remote` —— 非白名单远端 ⟹ 退出码 1 + 明确报错。
-
-构造：把 `git-workflow.sh` + `gw_credentials.sh` 复制到临时「技能根」，同级放一个
-**桩 gatekeeper**（记录 argv / 可令其失败）⟹ 不触碰真实门禁、不触网。
+  · `test_default_push_is_native`        —— 默认**不**调用同级 gatekeeper；
+  · `test_config_value_enables_delegation` —— 配置 `push.delegate: gatekeeper` 生效；
+  · `test_allow_main_flag_is_forwarded`  —— 授权位透传；
+  · `test_flag_absent_by_default`        —— 不带 flag 时不得透传；
+  · `test_blocked_delegation_gives_hint` —— 被拒 ⟹ 可操作指引 + 降级成功；
+  · `test_precheck_is_opt_in`            —— 默认不调 `../github-push`，仅显式配置才调。
 """
 import os
 import shutil
@@ -37,6 +39,10 @@ echo '{"ok":true,"phase":"confirm"}'
 exit 0
 """
 
+PC_STUB = """import os, sys, pathlib
+pathlib.Path(os.environ["GW_PC_MARK"]).write_text(" ".join(sys.argv[1:]))
+"""
+
 
 def _git(repo, *a):
     return subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True)
@@ -51,11 +57,16 @@ def sandbox(tmp_path):
     (skill / "git-workflow.yaml").write_text(
         "worktree:\n  base_path: %s\n" % (tmp_path / "wts"), encoding="utf-8")
 
+    # 同级 gatekeeper（桩）
     gk = tmp_path / "spz-gatekeeper-r-sequence"
     gk.mkdir()
     stub = gk / "gatekeeper-cli.sh"
     stub.write_text(STUB, encoding="utf-8")
     stub.chmod(0o755)
+    # 同级 github-push（桩）—— 用来证明**默认不再自动调用**
+    hp = tmp_path / "github-push"
+    hp.mkdir()
+    (hp / "github_push.py").write_text(PC_STUB, encoding="utf-8")
 
     bare = tmp_path / "bare.git"
     subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
@@ -67,16 +78,19 @@ def sandbox(tmp_path):
     _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init")
     _git(repo, "remote", "add", "origin", str(bare))
 
-    record = tmp_path / "argv.txt"
     env = dict(os.environ)
+    env.pop("GIT_WORKFLOW_DELEGATE", None)
+    env.pop("GIT_WORKFLOW_PRECHECK_CLI", None)
     env.update({
-        "GW_RECORD": str(record),
+        "GW_RECORD": str(tmp_path / "argv.txt"),
+        "GW_PC_MARK": str(tmp_path / "pc_mark.txt"),
         "GIT_WORKFLOW_LOG": str(tmp_path / "logs"),
         "GIT_WORKFLOW_BACKUP": str(tmp_path / "backups"),
         "GIT_WORKFLOW_WORKTREE_ROOT": str(tmp_path / "wts"),
         "GW_ASSUME_YES": "1",
     })
-    return {"skill": skill, "repo": repo, "record": record, "env": env}
+    return {"skill": skill, "repo": repo, "record": tmp_path / "argv.txt",
+            "pc_mark": tmp_path / "pc_mark.txt", "env": env}
 
 
 def _run(box, *args, extra_env=None):
@@ -88,34 +102,61 @@ def _run(box, *args, extra_env=None):
         cwd=str(box["repo"]), capture_output=True, text=True, env=env, timeout=120)
 
 
+def test_default_push_is_native(sandbox):
+    """默认**不**调用同级 gatekeeper（开源包不得强制外部工具）。"""
+    r = _run(sandbox, "push", "push")
+    assert r.returncode == 0, (r.stdout, r.stderr)
+    assert not sandbox["record"].exists(), "默认竟然调用了同级 gatekeeper（耦合未解）"
+    bare = sandbox["repo"].parent / "bare.git"
+    assert _git(bare, "rev-parse", "refs/heads/main").returncode == 0
+
+
+def test_config_value_enables_delegation(sandbox):
+    """配置 `push.delegate: gatekeeper` 是**显式**开启方式之一。"""
+    (sandbox["skill"] / "git-workflow.yaml").write_text(
+        "push:\n  delegate: gatekeeper\nworktree:\n  base_path: %s\n"
+        % (sandbox["repo"].parent / "wts"), encoding="utf-8")
+    r = _run(sandbox, "push", "push")
+    assert r.returncode == 0, (r.stdout, r.stderr)
+    assert sandbox["record"].exists(), "配置未生效（委托未被调用）"
+
+
 def test_allow_main_flag_is_forwarded(sandbox):
-    r = _run(sandbox, "push", "push", "--allow-main")
+    r = _run(sandbox, "push", "push", "--allow-main",
+             extra_env={"GIT_WORKFLOW_DELEGATE": "gatekeeper"})
     assert r.returncode == 0, (r.stdout, r.stderr)
     argv = sandbox["record"].read_text(encoding="utf-8").splitlines()
     assert "--allow-main" in argv, f"未透传到委托：{argv}"
 
 
 def test_flag_absent_by_default(sandbox):
-    r = _run(sandbox, "push", "push")
+    r = _run(sandbox, "push", "push", extra_env={"GIT_WORKFLOW_DELEGATE": "gatekeeper"})
     assert r.returncode == 0, (r.stdout, r.stderr)
     argv = sandbox["record"].read_text(encoding="utf-8").splitlines()
     assert "--allow-main" not in argv, f"默认不该放宽：{argv}"
 
 
 def test_blocked_delegation_gives_hint(sandbox):
-    r = _run(sandbox, "push", "push", extra_env={"GW_STUB_EXIT": "1"})
+    r = _run(sandbox, "push", "push",
+             extra_env={"GIT_WORKFLOW_DELEGATE": "gatekeeper", "GW_STUB_EXIT": "1"})
     out = r.stdout + r.stderr
     assert "--allow-main" in out, f"缺可操作指引：{out}"
     assert "auth-main" in out, f"缺一次性授权指引：{out}"
-    # 委托失败后应降级原生 push（本案 origin 是本地裸仓 ⟹ 会成功）
     assert r.returncode == 0, (r.stdout, r.stderr)
     bare = sandbox["repo"].parent / "bare.git"
     assert _git(bare, "rev-parse", "refs/heads/main").returncode == 0
 
 
-def test_pr_fallback_rejects_unlisted_remote(sandbox):
-    r = _run(sandbox, "push", "pr-fallback")
-    out = r.stdout + r.stderr
-    assert r.returncode != 0, (r.stdout, r.stderr)
-    assert "白名单验证失败" in out, out
-    assert "GW_PUSH_REMOTE_ALLOW" in out, f"报错未给出覆盖位：{out}"
+def test_precheck_is_opt_in(sandbox):
+    """默认不调 `../github-push`（旧实现按同级目录自动调用）；显式配置才调。"""
+    r = _run(sandbox, "push", "precheck")
+    assert r.returncode == 0, (r.stdout, r.stderr)
+    assert "未配置预检工具" in (r.stdout + r.stderr), r.stdout
+    assert not sandbox["pc_mark"].exists(), "默认仍自动调用了同级 github-push（耦合未解）"
+
+    stub = sandbox["skill"] / "precheck.py"
+    stub.write_text(PC_STUB, encoding="utf-8")
+    r2 = _run(sandbox, "push", "precheck",
+              extra_env={"GIT_WORKFLOW_PRECHECK_CLI": str(stub)})
+    assert r2.returncode == 0, (r2.stdout, r2.stderr)
+    assert sandbox["pc_mark"].exists(), "显式配置的预检未被执行"

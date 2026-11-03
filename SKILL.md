@@ -39,12 +39,18 @@ git-workflow push push [--remote origin] [--branch <name>] [--timeout 60] [--pus
 git-workflow push pr-fallback                   # 建 feature/<时间戳> 分支 + 推送 + gh pr create
 ```
 
-- `push` 的路径是**两条**，先委托后原生：
-  1. 同级存在 `spz-gatekeeper-r-sequence/gatekeeper-cli.sh` → 委托 `push confirm`（含远端白名单验证），
-     并置 `GIT_WORKFLOW_DELEGATING=1` 防「委托→提醒→委托」环路；
-  2. 委托失败（或不存在）→ 原生 `git push`：`timeout` 默认 60s，最多 3 次，间隔 5s。
-- 直推 `main/master` 在门禁侧默认被拒；`--allow-main` 会把该**显式授权**透传给委托
-  （仅本次调用有效，不写盘）。被拒时输出会给出 `--allow-main` 与 `auth-main` 两条路径。
+- 默认**不依赖任何外部技能**：`push` 直接走原生 `git push`（`timeout` 默认 60s，最多 3 次，
+  间隔 5s），凭据由你自己的 credential helper / 环境提供。
+- 需要外部门禁（白名单、分支策略等）时**显式开启**委托：
+  ```bash
+  GIT_WORKFLOW_DELEGATE=gatekeeper          # 同级 spz-gatekeeper-r-sequence
+  GIT_WORKFLOW_DELEGATE=/path/to/cli.sh     # 或你自己的工具（需支持 push confirm 契约）
+  # 或写进 git-workflow.yaml：push.delegate: gatekeeper
+  ```
+  委托启用后置 `GIT_WORKFLOW_DELEGATING=1` 防「委托→提醒→委托」环路；委托失败会回落原生
+  `git push` 并打印原因。
+- 直推 `main/master` 是否被拒**由外部工具决定**；若对方要求显式授权，可用
+  `--allow-main` 透传（仅本次调用有效）。
 - 成功后若配置 `auto_cleanup: true`，自动执行 `branch cleanup --non-interactive --no-remote`。
 - `pr-fallback` 的 origin 必须命中远端白名单：默认放行常见托管站
   （`github.com/` `gitlab.com/` `atomgit.com/` `gitee.com/` `codeberg.org/`），
@@ -136,13 +142,15 @@ git-workflow history commit-batch <模块> <文件...> [--message <msg>]
 
 | 键 | 作用 |
 |---|---|
+| `push.delegate` | 外部推送委托（`none` 默认 / `gatekeeper` / 可执行路径） |
+| `push.precheck_cli` | 预检脚本路径（留空 = 跳过） |
 | `worktree.base_path` | `worktree create` 的根 |
 | `auto_cleanup: true` | 分支操作/推送成功后自动清理已合并分支 |
 | `branch.cleanup.exclude[]` | 分支清理的排除名单 |
 
-其余键（`push.*` / `branch.protection[]` / `release.*` / `security.*` / `logging.*` /
-`notification.*` 等）为预留，当前不参与判定 —— 保护分支名单是硬编码的
-`main/master/develop/release/production`。
+其余键（`push.timeout` / `push.retry_count` / `push.pr_fallback` / `branch.protection[]` /
+`release.*` / `security.*` / `logging.*` / `notification.*` 等）为预留，当前不参与判定 ——
+保护分支名单是硬编码的 `main/master/develop/release/production`。
 
 ## 环境变量
 
@@ -153,6 +161,8 @@ git-workflow history commit-batch <模块> <文件...> [--message <msg>]
 | `GIT_WORKFLOW_BACKUP` | 备份根（默认 `$HOME/.local/share/git-workflow/backups`） |
 | `GIT_WORKFLOW_WORKTREE_ROOT` | 覆盖 worktree 根（优先于配置） |
 | `GIT_WORKFLOW_AUTO_CLEANUP` | `true` 时等效于配置 `auto_cleanup: true` |
+| `GIT_WORKFLOW_DELEGATE` | 外部推送委托：`none`（默认）/ `gatekeeper` / 可执行路径 |
+| `GIT_WORKFLOW_PRECHECK_CLI` | 预检脚本路径（默认无） |
 | `GW_ASSUME_YES` | `1` = 非交互确认直通（CI 用） |
 | `GW_COMMIT_MESSAGE` | `commit-batch` 默认提交信息 |
 | `GW_PUSH_REMOTE_ALLOW` | `pr-fallback` 远端白名单（逗号/冒号分隔；默认常见托管站） |

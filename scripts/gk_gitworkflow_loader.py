@@ -55,9 +55,11 @@ GITWORKFLOW_VERSION = "2.1.1"
 #   GITWORKFLOW_VERSION / SKILL.md / yaml / package.sh 同值）⟹ 同步更新其 pin。
 # 2026-11-03（集成修复）：`push push` 新增 `--allow-main` 透传 + 拒绝时给出可操作指引；
 #   `pr-fallback` 白名单改 `GW_PUSH_REMOTE_ALLOW` ⟹ 再改 git-workflow.sh ⟹ pin 同步。
+# 2026-11-03（解绑）：push 委托/预检改为**显式启用**（GIT_WORKFLOW_DELEGATE /
+#   GIT_WORKFLOW_PRECHECK_CLI，默认 none）—— 开源插件不再按同级目录自动调用别的技能。
 _GITWORKFLOW_PINS = {
     "2.1.1": {
-        "git-workflow.sh": "b9dc4a8c431817596f4c52b915a365056e7f1d099a55478cc4a423ba755fd4e4",
+        "git-workflow.sh": "cea6f92e3504221f0086883e5d2ea17185d72ac57ca6f2031cbcbff058b9262d",
         "gw_history_split.py": "08c83f3c1b960333cf8c8adba0cc3495d9bdf4d26d08200f0b06e5b5d9ceae5a",
         "branch-delete-safety-check.sh": "0cf22c748aa218dbd672c83eaf10f684c6cb9d0084aeb54bae86ab316896e3f4",
     },

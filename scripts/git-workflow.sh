@@ -205,6 +205,43 @@ gw_selfcheck() {
     return $rc
 }
 
+# ─── 外部工具的**显式**接线（2026-11-03：解绑）────────────────────────────────
+# 定位：本技能是**开源插件**，不得假定用户装了什么、也不得按同级目录自动调用别的技能
+#   （用户可能有自己的专属工具）。一切外部增强都**默认关闭**，由 env / 配置显式打开：
+#     · push 委托：`GIT_WORKFLOW_DELEGATE` 或配置 `push.delegate`
+#         - 空/none  ⟹ 不委托（默认，走原生 git push + 用户自己的凭据助手）
+#         - gatekeeper ⟹ 按同级目录解析 spz-gatekeeper-r-sequence/gatekeeper-cli.sh
+#         - <路径>     ⟹ 直接用该可执行入口
+#     · push 预检：`GIT_WORKFLOW_PRECHECK_CLI` 或配置 `push.precheck_cli`（默认无）
+_gw_config_push_key() {
+    local key="$1"
+    [ -f "$CONFIG_FILE" ] || return 0
+    awk -v k="$key" '
+        /^[^[:space:]#]/ { in_push = ($0 ~ /^push:[[:space:]]*$/) ; next }
+        in_push && $0 ~ ("^[[:space:]]+" k ":") {
+            sub("^[[:space:]]+" k ":[[:space:]]*", ""); sub(/[[:space:]]+#.*$/, ""); print; exit
+        }
+    ' "$CONFIG_FILE" 2>/dev/null
+}
+
+_gw_delegate_cli() {
+    local v="${GIT_WORKFLOW_DELEGATE:-}"
+    [ -n "$v" ] || v="$(_gw_config_push_key delegate)"
+    case "$v" in
+        ""|none|off|0) return 1 ;;
+        gatekeeper)
+            local p
+            p="$(cd "$SKILL_DIR/../spz-gatekeeper-r-sequence" 2>/dev/null && pwd)/gatekeeper-cli.sh"
+            if [ -f "$p" ]; then printf '%s' "$p"; return 0; fi
+            log_warn "已启用 gatekeeper 委托，但未找到同级 gatekeeper-cli.sh ⟹ 回落原生 push" >&2
+            return 1 ;;
+        *)
+            if [ -f "$v" ]; then printf '%s' "$v"; return 0; fi
+            log_warn "委托入口不存在: $v ⟹ 回落原生 push" >&2
+            return 1 ;;
+    esac
+}
+
 # 推送管理模块
 push_management() {
     local action=$1
@@ -213,12 +250,15 @@ push_management() {
     case $action in
         "precheck")
             log_info "执行推送预检..."
-            # 调用 github-push 子模块 (可选)
-            local github_push="$SKILL_DIR/../github-push/github_push.py"
-            if [ -f "$github_push" ]; then
-                python "$github_push" precheck "$@"
+            # 预检工具**显式配置**（默认无）：不再按同级目录猜 github-push
+            local _pc="${GIT_WORKFLOW_PRECHECK_CLI:-}"
+            [ -n "$_pc" ] || _pc="$(_gw_config_push_key precheck_cli)"
+            if [ -n "$_pc" ] && [ -f "$_pc" ]; then
+                python3 "$_pc" precheck "$@"
+            elif [ -n "$_pc" ]; then
+                log_warn "预检入口不存在: $_pc ⟹ 跳过"
             else
-                log_warn "github-push 子模块未安装，跳过 hook 检查"
+                log_info "未配置预检工具（GIT_WORKFLOW_PRECHECK_CLI / push.precheck_cli）⟹ 跳过"
             fi
             ;;
         "push")
@@ -241,13 +281,14 @@ push_management() {
             [ -z "$branch" ] && branch=$(git branch --show-current 2>/dev/null || echo "main")
             [ -z "$push_url" ] && push_url=$(git remote get-url "$remote" 2>/dev/null)
 
-            # ─── F8.1: Gatekeeper context delegation ───
-            # 如果 spz-gatekeeper-r-sequence CLI 可访问, 委托给 cmd_push (含 _verify_remote + stage 门禁)
+            # ─── 可选委托（2026-11-03 解绑：**默认不启用**，见 `_gw_delegate_cli`）───
+            # 启用后把推送交给外部工具（如 gatekeeper 的远端白名单 + 分支策略）。
             # 2026-08-30 防循环哨兵：委托时置 GIT_WORKFLOW_DELEGATING=1，spz-gatekeeper cmd_push
             # 检测到该 env 不再提示"使用 git-workflow"（防 cmd_push→提醒→git-workflow→委托→提醒 环路）。
-            local gk_cli="$(cd "$SKILL_DIR/../spz-gatekeeper-r-sequence" 2>/dev/null && pwd)/gatekeeper-cli.sh"
-            if [ -f "$gk_cli" ]; then
-                log_info "检测到 spz-gatekeeper-r-sequence → 委托推送 (含远端白名单验证)"
+            local gk_cli=""
+            gk_cli="$(_gw_delegate_cli)" || gk_cli=""
+            if [ -n "$gk_cli" ]; then
+                log_info "委托推送 → $gk_cli"
                 local repo="$(pwd)"
                 local -a _gk_extra=()
                 [ "$allow_main" = "1" ] && _gk_extra+=("--allow-main")
@@ -355,7 +396,9 @@ push_management() {
             echo "  --allow-main      委托 gatekeeper 时显式授权直推 main/master（仅本次有效）"
             echo ""
             echo "环境变量:"
-            echo "  GW_PUSH_REMOTE_ALLOW   pr-fallback 远端白名单（逗号/冒号分隔，默认常见托管站）"
+            echo "  GIT_WORKFLOW_DELEGATE      外部委托（默认 none；gatekeeper 或 <可执行路径>）"
+            echo "  GIT_WORKFLOW_PRECHECK_CLI  预检脚本路径（默认无）"
+            echo "  GW_PUSH_REMOTE_ALLOW       pr-fallback 远端白名单（逗号/冒号分隔，默认常见托管站）"
             return 0
             ;;
 

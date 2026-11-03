@@ -4,6 +4,11 @@
 
 # 推送管理配置
 push:
+  # 外部推送委托：none（默认，原生 git push）/ gatekeeper / <可执行路径>
+  # 2026-11-03：开源默认**不依赖**任何外部技能；需要门禁/白名单时显式开启
+  delegate: none
+  # 预检脚本（可选）：需实现 `precheck` 子命令；留空 = 跳过
+  precheck_cli: ""
   # 是否启用预检
   precheck: true
   # 推送超时时间（秒）

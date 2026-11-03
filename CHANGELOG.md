@@ -8,6 +8,12 @@
 ## [2.1.1] - 2026-11-03
 
 ### 变更
+- 🔓 **解绑外部技能（开源可移植）**：`push` 的委托与预检不再按**同级目录自动调用**
+  `spz-gatekeeper-r-sequence` / `github-push`。默认 `push` = 原生 `git push`（凭据交给用户
+  自己的 credential helper），外部工具一律**显式开启**：
+  - `GIT_WORKFLOW_DELEGATE=none|gatekeeper|<可执行路径>` 或配置 `push.delegate`
+  - `GIT_WORKFLOW_PRECHECK_CLI=<路径>` 或配置 `push.precheck_cli`
+  背景：本技能是开源插件，强制依赖另一个技能既不可移植，也会覆盖用户已有的专属工具
 - 📘 **SKILL.md 重写**：按**实际 CLI 口径**重写，删除与实现不符的描述（原文档把
   `release check` / `security review` 写成完整检查、把 `.codebuddy` 旧路径与预留配置项当作生效）。
   新文档逐模块列出真实可用命令与选项，并显式标注骨架实现、硬编码保护名单、配置项真实生效面

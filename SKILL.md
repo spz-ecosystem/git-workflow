@@ -5,592 +5,215 @@ description: Git工作流统一管理skill，整合推送、分支、worktree、
 
 # Git Workflow Umbrella Skill
 
-统一管理所有git工作流操作，提供标准化、自动化、可追溯的git操作规范。
+七模块统一入口（`scripts/git-workflow.sh`，安装后为 `git-workflow`）。所有写操作都带前置检查，
+破坏性操作默认要确认；**非交互环境一律 fail-closed**（见「非交互与确认」）。
 
-## 核心原则
+## 快速开始
 
-1. **统一入口**：所有git工作流操作通过`git-workflow`命令执行
-2. **标准化操作**：遵循统一的git操作规范
-3. **自动化流程**：减少人工操作，提高效率
-4. **可追溯性**：记录所有操作历史，便于审计
-
-## 模块架构
-
-```
-git-workflow
-├── push          # 推送管理
-├── branch        # 分支管理
-├── worktree      # Worktree管理
-├── release       # 发版预检
-├── security      # 安全审查
-├── cleanup       # 清理工具
-└── history       # 历史管理 (撤销/split 拆分/备份/批量提交)
-```
-
-## 使用场景
-
-### 1. 推送代码
 ```bash
-# 标准推送
-git-workflow push
-
-# 推送前预检
-git-workflow push --precheck
-
-# PR回退（分支保护时）
-git-workflow push --pr-fallback
+git-workflow                      # 总览（模块与常用操作）
+git-workflow <模块> --help         # 模块级帮助
+git-workflow selfcheck            # 加载安全网自检
+git-workflow version              # 2.1.1
 ```
 
-### 2. 分支管理
+仓库内未安装时用 `bash scripts/git-workflow.sh <模块> <操作>`。
+
+## 模块一览
+
+| 模块 | 作用 | 主要操作 |
+|---|---|---|
+| `push` | 推送与 PR 回退 | `precheck` / `push` / `pr-fallback` |
+| `branch` | 分支生命周期 | `create` / `delete` / `cleanup` / `status` / `restore` / `schedule` |
+| `worktree` | 隔离工作树 | `create` / `delete` / `cleanup` |
+| `release` | 发版 | `check` / `prepare` |
+| `security` | 安全审查 | `review` / `audit` |
+| `cleanup` | 清理 | `remote` / `worktree` / `branches` |
+| `history` | 提交历史 | `undo-last` / `split` / `split-root` / `stage-pick` / `backup` / `commit-batch` |
+
+## push
+
 ```bash
-# 创建新分支（自动创建隔离worktree）
-git-workflow branch create feature-new-feature
-
-# 删除分支（安全审查后）
-git-workflow branch delete feature-old-feature
-
-# 清理已合并分支
-git-workflow branch cleanup
-
-# 显示分支状态报告
-git-workflow branch status
-
-# 恢复已删除的分支
-git-workflow branch restore feature-old-feature
-
-# 配置分支清理定时任务
-git-workflow branch schedule --weekly --time 02:00
+git-workflow push precheck                      # 预检（依赖同级 github-push 模块；缺失则跳过并提示）
+git-workflow push push [--remote origin] [--branch <name>] [--timeout 60] [--push-url <url>]
+git-workflow push pr-fallback                   # 建 feature/<时间戳> 分支 + 推送 + gh pr create
 ```
 
-### 3. Worktree管理
+- `push` 的路径是**两条**，先委托后原生：
+  1. 同级存在 `spz-gatekeeper-r-sequence/gatekeeper-cli.sh` → 委托 `push confirm`（含远端白名单验证），
+     并置 `GIT_WORKFLOW_DELEGATING=1` 防「委托→提醒→委托」环路；
+  2. 委托失败（或不存在）→ 原生 `git push`：`timeout` 默认 60s，最多 3 次，间隔 5s。
+- 成功后若配置 `auto_cleanup: true`，自动执行 `branch cleanup --non-interactive --no-remote`。
+- `pr-fallback` 当前仅放行 `github.com/spz-ecosystem/*` 与 `atomgit.com/pjh3955/*` 的 origin；
+  其他远端会被拒（避免把代码推到未授权仓）。
+
+## branch
+
 ```bash
-# 创建隔离worktree
-git-workflow worktree create feature-new-feature
-
-# 删除worktree
-git-workflow worktree delete feature-old-feature
-
-# 清理孤立worktree
-git-workflow worktree cleanup
+git-workflow branch create <name>               # 建分支 + 隔离 worktree
+git-workflow branch delete <name>               # 先跑安全检查，确认后清 worktree + git branch -d
+git-workflow branch cleanup [--dry-run] [--non-interactive] [--no-merged] [--no-remote] [--expire-days 30]
+git-workflow branch status [--all] [--remote] [--no-merged] [--no-expired] [--expire-days 30]
+git-workflow branch restore <name> [备份目录]
+git-workflow branch schedule [--daily|--weekly|--monthly] [--day 0-6] [--time HH:MM] [--disable]
 ```
 
-### 4. 发版预检
+- `delete` 的安全检查 = `scripts/branch-delete-safety-check.sh --dry-run`：保护分支、当前分支、
+  合并状态、未提交更改、最后提交时间、worktree 关联；任一不过则拒删。保护名单为硬编码的
+  `main/master/develop/release/production`（配置 `branch.protection[]` 当前**未生效**）。
+- `cleanup` 删前把分支引用备份到 `$BACKUP_DIR/branch-deletes/<时间戳>/`，失败可用 `restore` 还原。
+- `cleanup` 默认排除 `main/master/develop/release/production/gh-pages`，可用配置
+  `branch.cleanup.exclude[]` 追加。
+- `create` 的 worktree 根固定为 `$HOME/.config/superpowers/worktrees/<repo>/<branch>`
+  （**不读** `worktree.base_path`）；要自定义根或要 `--json` 机读，请用 `worktree create`。
+
+## worktree
+
 ```bash
-# 执行发版可行性检查
+git-workflow worktree create <branch> [--from <ref>] [--json]
+git-workflow worktree delete <branch> | --path <dir> [--force]
+git-workflow worktree cleanup                   # 仅 git worktree prune（清元数据，不动目录）
+```
+
+- 根解析顺序：`GIT_WORKFLOW_WORKTREE_ROOT` → 配置 `worktree.base_path` →
+  `$HOME/.config/superpowers/worktrees`。
+- `create` 幂等：目标路径已是该分支的 worktree ⟹ 复用（`created=false`）；目录存在但分支不符
+  ⟹ **拒绝覆盖**（exit 1）。分支不存在时必须给 `--from <ref>`。
+- `delete --path` 用于**无分支的孤儿**（`worktree list | grep` 找不到的形态）；`--force` 跳过占用检查
+  并强删（调用方应先完成归档）。
+- `cleanup` 只清注册元数据；目录残留需由门禁回收链（`apply-worktree --reclaim`）处理。
+
+## release
+
+```bash
 git-workflow release check
-
-# 准备发版
-git-workflow release prepare
+git-workflow release prepare <version>          # check + git checkout -b release/<version>
 ```
 
-### 5. 安全审查
+**如实口径**：`check` 目前只打印构建/测试/文档三个阶段，**不执行**真实构建或测试；需要真实门禁请
+调用项目自身的 CI / `spz-gatekeeper-r-sequence` 的验收链。
+
+## security
+
 ```bash
-# 执行安全审查
-git-workflow security review
-
-# 执行安全审计
-git-workflow security audit
+git-workflow security review                    # 骨架：输出分支保护/权限/操作历史检查项
+git-workflow security audit                     # 落审计报告到 $LOG_DIR/audit_<时间戳>.txt
 ```
 
-### 6. 清理工具
+`audit` 报告内容 = 分支列表 + `git worktree list` + `git remote -v`；`review` 暂不做判定。
+
+## cleanup
+
 ```bash
-# 清理远程跟踪引用
-git-workflow cleanup remote
-
-# 清理孤立worktree
-git-workflow cleanup worktree
-
-# 清理临时分支
-git-workflow cleanup branches
+git-workflow cleanup remote                     # git fetch --prune
+git-workflow cleanup worktree                   # git worktree prune
+git-workflow cleanup branches                   # 删 temp/、tmp/、当日 feature/ 分支（需确认）
 ```
 
-## 详细功能
+## history
 
-### 推送管理（Push Management）
-
-#### Phase 0: 预检
-1. **Hook完整性检查**
-   - 检查CRLF换行符
-   - 检查语法错误
-   - 验证hook配置
-
-1b. **换行符污染检测（2026-09-01 L1 扩展）**
-   - 同文件混合 CRLF+LF → 换行符污染（diff 噪声/补丁注入风险面）
-   - .gitattributes 缺失 + core.autocrlf 未开启 → 无显式换行策略（漂移/重写风险）
-   - 建议：补 `.gitattributes`（`* text=auto` + 关键类型 `eol=lf`）统一行尾
-   - 确定性检测：`gatekeeper-cli.sh audit --crossr` → `git_workflow.line_ending_pollution`
-
-2. **Token类型与权限验证**
-   - 检测token类型（classic vs fine-grained）
-   - 验证仓库权限
-   - 检查token有效期
-
-3. **分支保护检测**
-   - 检查目标分支保护规则
-   - 检测推送限制
-   - 建议PR工作流
-
-#### Phase 1: 标准推送
-1. 核对分支和状态
-2. 执行git push
-3. 处理超时/TLS错误
-4. 记录推送历史
-
-#### Phase 2: PR回退
-1. 创建feature分支
-2. 推送feature分支
-3. 创建Pull Request
-4. 输出PR链接
-
-### 分支管理（Branch Management）
-
-#### 分支创建规范
-1. **命名规范**
-   - feature/功能描述
-   - bugfix/问题描述
-   - hotfix/紧急修复
-   - release/版本号
-
-2. **隔离要求**
-   - 所有新分支必须在隔离worktree中
-   - 主worktree仅用于main分支
-   - 禁止在主worktree中创建新分支
-
-#### 分支删除安全审查
-1. **安全检查项目**
-   - 保护分支检查
-   - 当前分支检查
-   - 合并状态检查
-   - 未提交更改检查
-   - 最后提交时间检查
-   - PR关联检查
-   - Worktree关联检查
-   - 主Worktree检查
-
-2. **删除流程**
-   - 执行安全检查
-   - 确认删除操作
-   - 清理关联worktree
-   - 记录删除历史
-
-#### 分支状态报告
-1. **报告内容**
-   - 当前分支信息
-   - 本地分支统计
-   - 远程分支统计
-   - 分支合并状态
-   - 分支过期状态
-   - 分支保护状态
-
-2. **报告选项**
-   - `--all`：显示所有分支信息
-   - `--remote`：显示远程分支详情
-   - `--no-merged`：不显示已合并分支
-   - `--no-expired`：不显示过期分支
-   - `--expire-days <天数>`：设置过期分支天数（默认30天）
-
-#### 分支恢复
-1. **恢复流程**
-   - 查找备份目录
-   - 检查备份文件
-   - 恢复分支引用
-   - 验证恢复结果
-
-2. **备份机制**
-   - 自动备份到 `~/.codebuddy/backups/git-workflow/branch-deletes/`
-   - 按时间戳创建备份目录
-   - 保留分支引用备份文件
-
-#### 分支清理定时任务
-1. **定时任务类型**
-   - `--daily`：每日执行
-   - `--weekly`：每周执行（默认）
-   - `--monthly`：每月执行
-
-2. **定时任务选项**
-   - `--day <星期>`：设置执行星期（0=周日）
-   - `--time <时间>`：设置执行时间（默认02:00）
-   - `--disable`：禁用定时任务
-
-### Worktree管理（Worktree Management）
-
-#### 主Worktree保护
-1. **锁定机制**
-   - 使用`git worktree lock`保护
-   - 配置`worktree.mainWorktree=true`
-   - 禁止删除或修改
-
-2. **隔离要求**
-   - 仅用于main分支
-   - 禁止在此创建其他分支
-   - 禁止直接修改工作文件
-
-#### 隔离Worktree创建
-1. **创建规范**
-   - 路径：`/root/.config/superpowers/worktrees/<repo>/<branch>`
-   - 命名：与分支名一致
-   - 权限：与主worktree一致
-
-2. **生命周期管理**
-   - 创建：检查分支是否存在
-   - 使用：在隔离环境中工作
-   - 清理：删除分支时自动清理
-
-### 发版预检（Release Feasibility）
-
-#### 构建验证
-1. **编译检查**
-   - 目标模块构建成功
-   - 依赖库完整性
-   - 配置文件正确性
-
-2. **测试验证**
-   - 关键测试最小集通过
-   - 单元测试覆盖率
-   - 集成测试通过
-
-#### 质量检查
-1. **代码质量**
-   - 代码规范检查
-   - 静态分析通过
-   - 复杂度检查
-
-2. **文档完整性**
-   - API文档更新
-   - 使用文档更新
-   - 变更日志更新
-
-### 安全审查（Security Review）
-
-#### 操作安全
-1. **权限验证**
-   - 用户权限检查
-   - 操作权限验证
-   - 敏感操作确认
-
-2. **操作审计**
-   - 操作记录完整
-   - 操作可追溯
-   - 异常操作告警
-
-#### 数据安全
-1. **分支保护**
-   - 保护分支规则
-   - 强制推送限制
-   - 删除保护分支限制
-
-2. **Worktree安全**
-   - 主worktree保护
-   - 隔离worktree安全
-   - 并发访问控制
-
-### 清理工具（Cleanup Tools）
-
-#### 远程清理
-1. **远程跟踪引用清理**
-   - `git fetch --prune`
-   - 清理过期引用
-   - 同步远程状态
-
-2. **远程分支清理**
-   - 删除已合并远程分支
-   - 清理过期远程分支
-   - 同步分支状态
-
-#### 本地清理
-1. **Worktree清理**
-   - 清理孤立worktree
-   - 清理未使用worktree
-   - 优化worktree存储
-
-2. **分支清理**
-   - 清理已合并分支
-   - 清理过期分支
-   - 清理临时分支
-
-## 配置管理
-
-### 配置文件
-```yaml
-# git-workflow.yaml
-push:
-  precheck: true
-  timeout: 300
-  retry_count: 3
-  pr_fallback: true
-  
-branch:
-  protection:
-    - main
-    - master
-    - develop
-    - release
-    - production
-  auto_cleanup: true
-  naming:
-    feature: "feature/"
-    bugfix: "bugfix/"
-    hotfix: "hotfix/"
-    release: "release/"
-  cleanup:
-    interactive: true
-    dry_run: false
-    expire_days: 30
-    clean_remote: true
-    clean_merged: true
-    exclude:
-      - main
-      - master
-      - develop
-      - release
-      - production
-      - gh-pages
-  
-worktree:
-  isolation: true
-  base_path: /root/.config/superpowers/worktrees
-  auto_cleanup: true
-  main_protection: true
-  
-release:
-  precheck: true
-  required_tests: true
-  required_docs: true
-  required_build: true
-  
-security:
-  audit: true
-  log_operations: true
-  monitor_anomalies: true
-  sensitive_operations_confirm: true
-  
-cleanup:
-  auto_cleanup: true
-  cleanup_interval: 7
-  temp_branch_retention: 30
-  worktree_retention: 30
-  
-logging:
-  log_dir: "~/.codebuddy/logs/git-workflow"
-  log_level: "INFO"
-  verbose: false
-  retention_days: 30
-  
-backup:
-  backup_dir: "~/.codebuddy/backups/git-workflow"
-  auto_backup: true
-  retention_days: 30
-  
-notification:
-  enabled: true
-  methods:
-    - console
-    - log
-  levels:
-    - error
-    - warning
-    - success
-    
-cross_platform:
-  auto_detect_windows: true
-  windows_path_mapping:
-    codebuddy_dir: "/mnt/c/Users/HP/.codebuddy"
-    username: "HP"
-  symlink:
-    auto_create: true
-    backup_existing: true
-```
-
-### 环境变量
 ```bash
-# Git Workflow配置
-GIT_WORKFLOW_CONFIG=/path/to/git-workflow.yaml
-GIT_WORKFLOW_LOG=/path/to/logs
-GIT_WORKFLOW_BACKUP=/path/to/backups
+git-workflow history undo-last                  # 撤销最近一次提交（保留工作区）
+git-workflow history split --onto <base> --groups <groups.json> [--apply] [--allow-dirty] [--json]
+git-workflow history split-root                 # 巨型初始提交检查 + 拆分建议
+git-workflow history stage-pick                 # 文件列表 + 推荐拆分顺序
+git-workflow history backup [路径]               # git bundle + uncommitted.patch + untracked.tar.gz
+git-workflow history commit-batch <模块> <文件...> [--message <msg>]
 ```
 
-### Windows/WSL路径处理
+- `split` 默认 **dry-run**；支持整文件（`paths`）与文件内第 N 个 hunk（`hunks`）。三条不变量：
+  零遗漏 / 只重排不改内容 / 失败回滚；收尾强制树等价校验（`git diff <orig> HEAD` 必须为空）。
+- `commit-batch` 不再交互：消息优先级 `--message` > `GW_COMMIT_MESSAGE` > 自动生成（会告警）。
 
-#### 自动检测机制
-脚本会自动检测Windows路径并创建符号链接：
-1. 检查WSL路径下的配置文件是否存在
-2. 如果不存在，检测Windows路径 `/mnt/c/Users/HP/.codebuddy/skills/git-workflow/`
-3. 自动创建符号链接到WSL路径
-4. 使用默认配置作为后备方案
+## 配置（`git-workflow.yaml`）
 
-#### 路径映射
-| 组件 | WSL路径 | Windows路径 |
-|------|---------|-------------|
-| 配置文件 | `/root/.codebuddy/skills/git-workflow/git-workflow.yaml` | `/mnt/c/Users/HP/.codebuddy/skills/git-workflow/git-workflow.yaml` |
-| 日志目录 | `/root/.codebuddy/logs/git-workflow/` | `/mnt/c/Users/HP/.codebuddy/logs/git-workflow/` |
-| 备份目录 | `/root/.codebuddy/backups/git-workflow/` | `/mnt/c/Users/HP/.codebuddy/backups/git-workflow/` |
-| Worktrees | `/root/.config/superpowers/worktrees/` | `/mnt/c/Users/HP/.config/superpowers/worktrees/` |
+路径：`GIT_WORKFLOW_CONFIG` → `<skill>/git-workflow.yaml`。
 
-#### 手动创建符号链接
-如果自动检测失败，可以手动创建符号链接：
+**当前被代码消费**的键：
+
+| 键 | 作用 |
+|---|---|
+| `worktree.base_path` | `worktree create` 的根 |
+| `auto_cleanup: true` | 分支操作/推送成功后自动清理已合并分支 |
+| `branch.cleanup.exclude[]` | 分支清理的排除名单 |
+
+其余键（`push.*` / `branch.protection[]` / `release.*` / `security.*` / `logging.*` /
+`notification.*` 等）为预留，当前不参与判定 —— 保护分支名单是硬编码的
+`main/master/develop/release/production`。
+
+## 环境变量
+
+| 变量 | 作用 |
+|---|---|
+| `GIT_WORKFLOW_CONFIG` | 配置文件路径 |
+| `GIT_WORKFLOW_LOG` | 日志目录（默认 `$HOME/.local/share/git-workflow/logs`） |
+| `GIT_WORKFLOW_BACKUP` | 备份根（默认 `$HOME/.local/share/git-workflow/backups`） |
+| `GIT_WORKFLOW_WORKTREE_ROOT` | 覆盖 worktree 根（优先于配置） |
+| `GIT_WORKFLOW_AUTO_CLEANUP` | `true` 时等效于配置 `auto_cleanup: true` |
+| `GW_ASSUME_YES` | `1` = 非交互确认直通（CI 用） |
+| `GW_COMMIT_MESSAGE` | `commit-batch` 默认提交信息 |
+
+## 非交互与确认
+
+`_gw_confirm` 的判据是**双条件**：`GW_ASSUME_YES=1` 直通；否则 stdin 必须是 tty，
+**非 tty 一律拒绝**（不挂死、不静默放行）。CI 里请显式设 `GW_ASSUME_YES=1`。
+
+## 加载安全网（改动核心脚本必读）
+
+入口前置 `scripts/gk_gitworkflow_loader.py`，对三个核心脚本做 SHA256 pin：
+
+```
+git-workflow.sh · gw_history_split.py · branch-delete-safety-check.sh
+```
+
+状态四态：`builtin`（全命中）/ `dev`（未登记）/ `tampered`（哈希不符）/ `missing` / `error`。
+**改任一核心脚本后必须同步 pin**，否则任何子命令被判 `tampered` 并 `exit 2`（即时生效，非约定）：
+
 ```bash
-# 在WSL中执行
-ln -s /mnt/c/Users/HP/.codebuddy/skills/git-workflow /root/.codebuddy/skills/git-workflow
+python3 scripts/gk_gitworkflow_loader.py status   # 期望 {"source":"builtin"}
 ```
 
-## 最佳实践
+## 凭据
 
-### 1. 推送最佳实践
-- **必须**执行预检
-- **必须**使用标准推送流程
-- **必须**记录推送历史
-- **必须**处理推送失败
+- 唯一密钥库：`C:\Users\HP\.config\trae-secrets\github.token`（WSL `/mnt/c/.../github.token`）；
+  只存 PAT，不入库、不进日志。
+- 解析入口：`source scripts/gw_credentials.sh; t=$(gw_token)`；
+  顺序：**密钥库 → `GITHUB_TOKEN` → `GH_TOKEN` → `gh auth token`**。
+- `gw_export_env` 同时导出 `GH_TOKEN` / `GITHUB_TOKEN`（`gh` 因 PAT 缺 `read:org` 无法 `auth login` 时使用）。
 
-### 2. 分支管理最佳实践
-- **必须**遵循命名规范
-- **必须**使用隔离worktree
-- **必须**执行安全审查
-- **必须**记录分支操作
+## 典型流程
 
-### 3. Worktree管理最佳实践
-- **必须**保护主worktree
-- **必须**使用隔离worktree
-- **必须**清理孤立worktree
-- **必须**记录worktree操作
+```bash
+# 1) 隔离开发
+git-workflow worktree create feature/x --from main --json
 
-### 4. 发版预检最佳实践
-- **必须**执行构建验证
-- **必须**执行测试验证
-- **必须**检查文档完整性
-- **必须**记录发版历史
+# 2) 提交与推送
+git-workflow history commit-batch feature/x src/a.py src/b.py --message "feat: ..."
+git-workflow push push
 
-### 5. 安全审查最佳实践
-- **必须**验证操作权限
-- **必须**记录操作历史
-- **必须**监控异常操作
-- **必须**定期安全审计
+# 3) 收尾清理（先 dry-run 看计划）
+git-workflow branch cleanup --dry-run
+git-workflow branch delete feature/x
 
-### 6. 清理工具最佳实践
-- **必须**定期清理远程引用
-- **必须**定期清理孤立worktree
-- **必须**定期清理已合并分支
-- **必须**记录清理历史
+# 4) 发版
+git-workflow release prepare 2.1.1
+```
 
-## 故障处理
+## 故障排查
 
-### 1. 推送失败
-- **网络超时**：使用重试机制
-- **TLS错误**：检查网络配置
-- **权限错误**：检查token权限
-- **分支保护**：使用PR工作流
-
-### 2. 分支操作失败
-- **分支不存在**：检查分支名
-- **分支被保护**：使用强制删除
-- **分支有未提交更改**：先提交或暂存
-- **分支有关联worktree**：先清理worktree
-
-### 3. Worktree操作失败
-- **Worktree被占用**：检查进程占用
-- **Worktree有未提交更改**：先提交或暂存
-- **Worktree路径错误**：检查路径配置
-- **Worktree权限错误**：检查权限设置
-
-### 4. 发版预检失败
-- **构建失败**：检查代码和依赖
-- **测试失败**：修复测试用例
-- **文档不完整**：补充文档
-- **依赖问题**：更新依赖版本
-
-## 监控和告警
-
-### 1. 操作监控
-- **推送监控**：监控推送成功率
-- **分支监控**：监控分支状态
-- **Worktree监控**：监控worktree使用情况
-- **发版监控**：监控发版质量
-
-### 2. 异常告警
-- **推送失败告警**：推送失败时告警
-- **分支异常告警**：分支状态异常时告警
-- **Worktree异常告警**：worktree状态异常时告警
-- **安全事件告警**：安全事件发生时告警
-
-### 3. 性能监控
-- **操作耗时监控**：监控各操作耗时
-- **资源使用监控**：监控资源使用情况
-- **并发操作监控**：监控并发操作情况
-- **存储空间监控**：监控存储空间使用
-
-## 维护和支持
-
-### 1. 日常维护
-- **定期检查**：定期检查系统状态
-- **定期清理**：定期清理过期数据
-- **定期备份**：定期备份重要数据
-- **定期更新**：定期更新系统版本
-
-### 2. 问题处理
-- **问题报告**：建立问题报告机制
-- **问题分析**：分析问题根本原因
-- **问题解决**：制定问题解决方案
-- **问题预防**：建立问题预防机制
-
-### 3. 持续改进
-- **功能优化**：持续优化功能
-- **性能优化**：持续优化性能
-- **用户体验优化**：持续优化用户体验
-- **文档完善**：持续完善文档
+| 现象 | 原因与处置 |
+|---|---|
+| 任意子命令 `exit 2` + `tampered` | 改了核心脚本未同步 loader pin ⟹ 重算 SHA256 写入 `_GITWORKFLOW_PINS` |
+| `push` 报远端不在白名单 | `pr-fallback` 只放行两个组织前缀；改用 `push push` 或调整远端 |
+| `push` 连续 3 次失败 | 看是否网络/TLS/凭据；`git push` 手工验证一次；凭据走 `gw_token` |
+| `branch delete` 被拒 | 看 `branch-delete-safety-check.sh` 输出：保护分支/未合并/未提交/worktree 关联 |
+| `worktree create` 报「目录已存在但不是该分支」 | 不覆盖；先确认目录归属，或换分支名/根 |
+| 非交互脚本卡住/被拒 | 显式 `GW_ASSUME_YES=1`（脚本不会在非 tty 下静默放行） |
+| `history split` 树不等价 | 按设计拒绝落盘；检查 `--groups` 是否遗漏 hunk |
 
 ## 相关文件
 
-- **设计文档**：`DESIGN.md`
-- **配置文件**：`git-workflow.yaml`
-- **脚本文件**：`scripts/`
-- **测试文件**：`tests/`
-- **文档文件**：`docs/`
-
-## 更新记录
-
-- **2026-11-02**：history 新增 `split`（**hunk 级**拆分已提交的混合提交）+ 跨平台层
-- `split --onto <base> --groups <json> [--apply]`：默认 dry-run；`paths` = 整文件、
-  `hunks` = 文件内第 N 个 hunk；三条不变量（**零遗漏** / **只重排不改内容** / 失败回滚），
-  收尾强制树等价校验（`git diff <orig> HEAD` 必须为空）
-- 跨平台层：`_gw_days_ago`（GNU/BSD/python 三级兜底）、`_gw_confirm`（非交互 **fail-closed**，
-  `GW_ASSUME_YES=1` 放行）、`_gw_in_repo`（自嵌套判定走 `git rev-parse --absolute-git-dir`，
-  规避 MSYS `/tmp` 与 `C:/...` 的形态分裂）
-- `backup` 改为 `git bundle` + `uncommitted.patch` + `untracked.tar.gz`
-  （原 `cp -r` 整仓复制，且自嵌套时报错仍返回 0 = **假成功**）
-- `commit-batch` 去交互：`--message` / `GW_COMMIT_MESSAGE`
-- 核心脚本 pin 同步（loader 的 SHA256 校验对改动**即时生效**，改脚本不更新 pin ⟹ 直接 tampered）
-
-- **2026-05-09**：更新文档，添加新功能说明
-- 添加分支状态报告功能
-- 添加分支恢复功能
-- 添加分支清理定时任务功能
-- 更新配置管理部分，添加完整配置选项
-- 更新最佳实践部分
-
-- **2026-05-10**：v1.1 新增 history 模块
-- 添加 undo-last (撤销最近提交, 保留工作区)
-- 添加 split-root (巨型初始提交检查 + 拆分建议)
-- 添加 stage-pick (文件列表 + 7 步推荐拆分顺序)
-- 添加 backup (工作区完整备份)
-- 添加 commit-batch (批量模块提交)
-
-- **2026-05-05**：正式发布v1.0.0版本
-- 整合github-push skill功能
-- 整合推送规则功能
-- 整合分支删除安全审查功能
-- 整合Worktree隔离管理功能
-- 添加发版预检模块
-- 添加安全审查模块
-- 添加清理工具模块
-
-- **2026-05-04**：初始版本，创建git-workflow umbrella skill
-
-## 凭据与密钥库（v2.1.0.post2，2026-10-25）
-
-- **唯一密钥库**：`C:\Users\HP\.config\trae-secrets\github.token`（WSL `/mnt/c/Users/HP/.config/trae-secrets/github.token`）。只存 PAT 本身，不入库、不进日志、不写进 md。
-- **解析入口**：`scripts/gw_credentials.sh`
-  - `source scripts/gw_credentials.sh; t=$(gw_token)`
-  - 顺序：密钥库 → `GITHUB_TOKEN` → `GH_TOKEN` → `gh auth token`
-  - `gw_export_env` 同时导出 `GH_TOKEN` / `GITHUB_TOKEN`
-- **推送取 token**：`git-workflow.sh` 已用 `$(gw_token)` 取代 `gh auth token`。`gh auth login` 因该 PAT 缺 `read:org` 会失败，列私有仓改用 `GH_TOKEN=$(gw_token) gh repo list ...`。
-- **定位私有仓/密钥**：先读 `C:\Users\HP\.trae\project_memory.md` 的「🔑 全局凭据与密钥库」，禁止全盘搜索 token / 私钥。
-- **版本纪律**：改 `git-workflow.sh` 后必须同步 `gk_gitworkflow_loader.py` 的 pin，否则任何子命令被加载安全网判 tampered 并 fail-closed（exit 2）。
+- 设计：`DESIGN.md` · 变更：`CHANGELOG.md` · 配置：`git-workflow.yaml`
+- 脚本：`scripts/`（入口 `git-workflow.sh`、安全检查 `branch-delete-safety-check.sh`、
+  拆分 `gw_history_split.py`、凭据 `gw_credentials.sh`、加载器 `gk_gitworkflow_loader.py`）
+- 测试：`tests/`（`test_gk_gitworkflow_loader.py`、`test-git-workflow.sh`）

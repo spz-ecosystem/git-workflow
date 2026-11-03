@@ -8,6 +8,9 @@
 ## [2.1.1] - 2026-11-03
 
 ### 变更
+- 📘 **SKILL.md 重写**：按**实际 CLI 口径**重写，删除与实现不符的描述（原文档把
+  `release check` / `security review` 写成完整检查、把 `.codebuddy` 旧路径与预留配置项当作生效）。
+  新文档逐模块列出真实可用命令与选项，并显式标注骨架实现、硬编码保护名单、配置项真实生效面
 - 🔧 **版本声明对齐**：`git-workflow.sh --version` / `SKILL.md` / `git-workflow.yaml` /
   `templates/git-workflow.yaml` / `package.sh` 统一到 `2.1.1`。此前五处分散为
   `2.1.0` / `2.0.0` / `1.0.0` ⟹ 装的到底是哪一版无法判断，`package.sh` 打出的包名也停留在

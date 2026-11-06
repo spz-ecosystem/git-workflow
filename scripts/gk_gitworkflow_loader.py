@@ -28,7 +28,7 @@ from pathlib import Path
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = SKILL_DIR / "scripts"
-GITWORKFLOW_VERSION = "2.1.1"
+GITWORKFLOW_VERSION = "2.1.2"
 # 核心脚本 pin 表（version → {filename: sha256}）。登记 = 跑过测试/验收的当前产物。
 # 修改任一核心脚本后须更新本 pin（对齐 _RELEASE_PINS 纪律：未登记 = dev WARN）。
 # 2026-09-23（ECC-A91DC4562198 收编）：`git-workflow.sh` 新增 `worktree create --from/--json`
@@ -60,6 +60,15 @@ GITWORKFLOW_VERSION = "2.1.1"
 _GITWORKFLOW_PINS = {
     "2.1.1": {
         "git-workflow.sh": "cea6f92e3504221f0086883e5d2ea17185d72ac57ca6f2031cbcbff058b9262d",
+        "gw_history_split.py": "08c83f3c1b960333cf8c8adba0cc3495d9bdf4d26d08200f0b06e5b5d9ceae5a",
+        "branch-delete-safety-check.sh": "0cf22c748aa218dbd672c83eaf10f684c6cb9d0084aeb54bae86ab316896e3f4",
+    },
+    # 2026-11-06 v2.1.2：推送成功后回收本地快照（`GW_SNAPSHOT_GC` / `GW_SNAPSHOT_GC_ARGS`）。
+    #   现场：该改动（提交 1d78924）只改了 `git-workflow.sh`、**没 bump 版本也没重钉** ⟹
+    #   loader 判 tampered（实测 sha256 变动后任何子命令 exit 2，apply-worktree 建树随之失败）。
+    #   本版补齐版本三处声明（脚本 / yaml / templates / package / SKILL）并重登记三个核心脚本 pin。
+    "2.1.2": {
+        "git-workflow.sh": "01eb487276c8c5f2cfaa378fc8c7cc2bf29f27be2d0d9f33d9c915837888eb0e",
         "gw_history_split.py": "08c83f3c1b960333cf8c8adba0cc3495d9bdf4d26d08200f0b06e5b5d9ceae5a",
         "branch-delete-safety-check.sh": "0cf22c748aa218dbd672c83eaf10f684c6cb9d0084aeb54bae86ab316896e3f4",
     },

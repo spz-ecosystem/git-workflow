@@ -5,6 +5,15 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.1.2] - 2026-11-06
+
+### 变更
+- **推送后快照回收**：新增 `_gw_snapshot_gc()` —— 推送成功后回收本地产出的整树快照。
+  仅在当前仓存在 `scripts/gk_snapshot_gc.py` 时执行；`GW_SNAPSHOT_GC=0` 关闭，
+  `GW_SNAPSHOT_GC_ARGS` 覆盖参数（默认 `--apply`），失败只 WARN、不影响推送结果。
+- 🔐 **loader pin 同步**：`gk_gitworkflow_loader.py` 版本与 pin 表更新到 `2.1.2`
+  （补登 `1d78924` 改动漏掉的 pin —— 该提交只改了核心脚本未 bump/重钉，loader 判 tampered）。
+
 ## [2.1.1] - 2026-11-03
 
 ### 变更

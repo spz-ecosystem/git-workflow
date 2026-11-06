@@ -1,6 +1,6 @@
 ---
 name: git-workflow
-description: Git工作流统一管理skill，整合推送、分支、worktree、发版预检、安全审查、清理和历史管理工具。v2.1.1
+description: Git工作流统一管理skill，整合推送、分支、worktree、发版预检、安全审查、清理和历史管理工具。v2.1.2
 ---
 
 # Git Workflow Umbrella Skill
@@ -14,7 +14,7 @@ description: Git工作流统一管理skill，整合推送、分支、worktree、
 git-workflow                      # 总览（模块与常用操作）
 git-workflow <模块> --help         # 模块级帮助
 git-workflow selfcheck            # 加载安全网自检
-git-workflow version              # 2.1.1
+git-workflow version              # 2.1.2
 ```
 
 仓库内未安装时用 `bash scripts/git-workflow.sh <模块> <操作>`。
@@ -210,7 +210,7 @@ git-workflow branch cleanup --dry-run
 git-workflow branch delete feature/x
 
 # 4) 发版
-git-workflow release prepare 2.1.1
+git-workflow release prepare 2.1.2
 ```
 
 ## 故障排查

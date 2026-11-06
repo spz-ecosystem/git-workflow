@@ -242,6 +242,43 @@ _gw_delegate_cli() {
     esac
 }
 
+# 推送后本地快照回收（2026-11-04）
+#   发布链会在本地产出整树快照（约 30 MB/份），长期堆积。策略：
+#   - 只在**当前仓**含 scripts/gk_snapshot_gc.py 时执行（不跨仓猜路径）；
+#   - GW_SNAPSHOT_GC=0 关闭；GW_SNAPSHOT_GC_ARGS 覆盖参数（默认 --apply）；
+#   - 尽力而为：失败只 WARN，不影响推送结果。
+_gw_snapshot_gc() {
+    [ "${GW_SNAPSHOT_GC:-1}" = "0" ] && return 0
+    local root script py c
+    root=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
+    script="${GW_SNAPSHOT_GC_SCRIPT:-$root/scripts/gk_snapshot_gc.py}"
+    [ -f "$script" ] || return 0
+    # 解释器**单源**（依次）：GK_PYTHON 显式覆盖 → 目标仓 scripts/py_resolve.sh →
+    #   同级 gatekeeper 仓的 py_resolve.sh（Windows 专属环境 `.venv-accept` 在那边）→ PATH 探测。
+    #   PATH 兜底必须试跑：Windows 的 python3 可能是 Store 占位桩（执行即静默退出 0）。
+    py=""
+    if [ -n "${GK_PYTHON:-}" ] && "$GK_PYTHON" -c "import sys" >/dev/null 2>&1; then
+        py="$GK_PYTHON"
+    fi
+    for _pr in "$root/scripts/py_resolve.sh" \
+               "$SKILL_DIR/../spz-gatekeeper-r-sequence/scripts/py_resolve.sh"; do
+        [ -n "$py" ] && break
+        [ -f "$_pr" ] || continue
+        py=$(bash "$_pr" any 2>/dev/null) || py=""
+    done
+    if [ -z "$py" ]; then
+        for c in python3 python; do
+            command -v "$c" >/dev/null 2>&1 || continue
+            "$c" -c "import sys" >/dev/null 2>&1 && { py="$c"; break; }
+        done
+    fi
+    [ -n "$py" ] || { log_warn "未找到可用的 python，跳过快照回收"; return 0; }
+    log_info "本地快照回收: $script ${GW_SNAPSHOT_GC_ARGS:---apply}"
+    "$py" "$script" ${GW_SNAPSHOT_GC_ARGS:---apply} 2>&1 | tail -n 5 || \
+        log_warn "快照回收失败（不影响推送）"
+    return 0
+}
+
 # 推送管理模块
 push_management() {
     local action=$1
@@ -332,6 +369,7 @@ push_management() {
                         log_info "自动清理已合并分支..."
                         branch_management cleanup --non-interactive --no-remote 2>/dev/null || true
                     fi
+                    _gw_snapshot_gc
                     return 0
                 fi
                 local exit_code=$?
@@ -399,6 +437,8 @@ push_management() {
             echo "  GIT_WORKFLOW_DELEGATE      外部委托（默认 none；gatekeeper 或 <可执行路径>）"
             echo "  GIT_WORKFLOW_PRECHECK_CLI  预检脚本路径（默认无）"
             echo "  GW_PUSH_REMOTE_ALLOW       pr-fallback 远端白名单（逗号/冒号分隔，默认常见托管站）"
+            echo "  GW_SNAPSHOT_GC             推送成功后回收本地快照（默认 1；0 关闭）"
+            echo "  GW_SNAPSHOT_GC_ARGS        回收参数（默认 --apply，即真删；设成空串可退回 dry-run）"
             return 0
             ;;
 

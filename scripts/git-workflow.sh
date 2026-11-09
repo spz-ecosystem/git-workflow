@@ -217,12 +217,18 @@ gw_selfcheck() {
 _gw_config_push_key() {
     local key="$1"
     [ -f "$CONFIG_FILE" ] || return 0
-    awk -v k="$key" '
+    local v
+    v="$(awk -v k="$key" '
         /^[^[:space:]#]/ { in_push = ($0 ~ /^push:[[:space:]]*$/) ; next }
         in_push && $0 ~ ("^[[:space:]]+" k ":") {
             sub("^[[:space:]]+" k ":[[:space:]]*", ""); sub(/[[:space:]]+#.*$/, ""); print; exit
         }
-    ' "$CONFIG_FILE" 2>/dev/null
+    ' "$CONFIG_FILE" 2>/dev/null)"
+    # 2026-11-09：CRLF 配置文件 + 空引号占位（`none\r` / `""`）会让下游把值当路径 ⟹
+    #   统一在此归一（剥 CR + 成对引号），precheck/delegate 两处都受益。
+    v="${v%$'\r'}"
+    v="${v#\"}"; v="${v%\"}"; v="${v#\'}"; v="${v%\'}"
+    printf '%s' "$v"
 }
 
 _gw_delegate_cli() {

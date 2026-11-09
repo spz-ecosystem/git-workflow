@@ -70,7 +70,7 @@ _GITWORKFLOW_PINS = {
     # 2026-11-09（检测命中修复）：`precheck_cli: ""` 空占位被当成路径 ⟹ 每次 push 误报
     #   `预检入口不存在: ""`。改为先剥引号再判空 ⟹ 同步重钉 git-workflow.sh。
     "2.1.2": {
-        "git-workflow.sh": "078733adc1a78e676832db7dc9cb71a511efa66634283215e1cd3a7eeb79c8ec",
+        "git-workflow.sh": "ff640ff3d877c0b9cb4b16cbf4a2cbb68596080b299808a3e986f21204af0144",
         "gw_history_split.py": "08c83f3c1b960333cf8c8adba0cc3495d9bdf4d26d08200f0b06e5b5d9ceae5a",
         "branch-delete-safety-check.sh": "0cf22c748aa218dbd672c83eaf10f684c6cb9d0084aeb54bae86ab316896e3f4",
     },

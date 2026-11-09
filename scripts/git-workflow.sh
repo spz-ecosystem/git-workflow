@@ -291,6 +291,10 @@ push_management() {
             # 预检工具**显式配置**（默认无）：不再按同级目录猜 github-push
             local _pc="${GIT_WORKFLOW_PRECHECK_CLI:-}"
             [ -n "$_pc" ] || _pc="$(_gw_config_push_key precheck_cli)"
+            # 2026-11-09：配置里的空占位（`precheck_cli: ""` / `''`）不是"已配置"——
+            #   原实现把它当路径去探测 ⟹ 每次 push 都误报 `预检入口不存在: ""`（命中率假阴性）。
+            _pc="${_pc%$'\r'}"
+            _pc="${_pc#\"}"; _pc="${_pc%\"}"; _pc="${_pc#\'}"; _pc="${_pc%\'}"
             if [ -n "$_pc" ] && [ -f "$_pc" ]; then
                 python3 "$_pc" precheck "$@"
             elif [ -n "$_pc" ]; then
